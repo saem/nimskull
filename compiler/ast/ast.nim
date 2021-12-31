@@ -46,10 +46,10 @@ proc setUseIc*(useIc: bool) = gconfig.useIc = useIc
 proc comment*(n: PNode): string =
   if nfHasComment in n.flags and not gconfig.useIc:
     # IC doesn't track comments, see `packed_ast`, so this could fail
-    result = gconfig.comments[n.nodeId]
+    result = gconfig.comments[n.id]
 
 proc `comment=`*(n: PNode, a: string) =
-  let id = n.nodeId
+  let id = n.id
   if a.len > 0:
     # if needed, we could periodically cleanup gconfig.comments when its size increases,
     # to ensure only live nodes (and with nfHasComment) have an entry in gconfig.comments;
@@ -375,45 +375,47 @@ proc getDeclPragma*(n: PNode): PNode =
       result = n[0][1]
   else:
     # support as needed for `nkIdentDefs` etc.
-    result = nil
+    result = nilPNode
   if result != nil:
     assert result.kind == nkPragma, $(result.kind, n.kind)
 
 when defined(useNodeIds):
   const nodeIdToDebug* = -1 # 2322968
-  var gNodeId: int
 
-template newNodeImpl(info2) =
-  result = PNode(kind: kind, info: info2, reportId: emptyReportId)
-  when false:
+template newNodeImpl(kind: TNodeKind, info2: TLineInfo) =
+  # result = PNode(kind: kind, info: info2)
+  let nodeId = state.nextNodeId()
+  state.nodeList.add NodeData(kind: kind)
+  state.nodeInf.add info2
+  result = PNode(id: nodeId, state: state)
+
+  when defined(nimsuggest):
     # this would add overhead, so we skip it; it results in a small amount of leaked entries
     # for old PNode that gets re-allocated at the same address as a PNode that
     # has `nfHasComment` set (and an entry in that table). Only `nfHasComment`
     # should be used to test whether a PNode has a comment; gconfig.comments
     # can contain extra entries for deleted PNode's with comments.
-    gconfig.comments.del(cast[int](result))
+    gconfig.comments.del(result.id)
 
 template setIdMaybe() =
   when defined(useNodeIds):
-    result.id = gNodeId
     if result.id == nodeIdToDebug:
       echo "KIND ", result.kind
       writeStackTrace()
-    inc gNodeId
 
 proc newNode*(kind: TNodeKind): PNode =
   ## new node with unknown line info, no type, and no children
-  newNodeImpl(unknownLineInfo)
+  newNodeImpl(kind, unknownLineInfo)
   setIdMaybe()
 
 proc newNodeI*(kind: TNodeKind, info: TLineInfo): PNode =
   ## new node with line info, no type, and no children
-  newNodeImpl(info)
+  newNodeImpl(kind, info)
   setIdMaybe()
 
 proc newNodeI*(kind: TNodeKind, info: TLineInfo, children: int): PNode =
   ## new node with line info, type, and children
-  newNodeImpl(info)
+  newNodeImpl(kind, info)
   if children > 0:
     newSeq(result.sons, children)
   setIdMaybe()
@@ -423,6 +425,13 @@ proc newNodeIT*(kind: TNodeKind, info: TLineInfo, typ: PType): PNode =
   result = newNode(kind)
   result.info = info
   result.typ = typ
+
+proc newErrorNodeIT*(rep: ReportId, info: TLineInfo, typ: PType): PNode =
+  ## new node with line info, type, report, and no children
+  result = newNode(nkError)
+  result.info = info
+  result.typ = typ
+  result.reportId = rep
 
 proc newTree*(kind: TNodeKind; children: varargs[PNode]): PNode =
   result = newNode(kind)
@@ -809,7 +818,7 @@ proc delSon*(father: PNode, idx: int) =
 proc copyNode*(src: PNode): PNode =
   # does not copy its sons!
   if src == nil:
-    return nil
+    return nilPNode
   result = newNode(src.kind)
   result.info = src.info
   result.typ = src.typ
@@ -827,21 +836,26 @@ proc copyNode*(src: PNode): PNode =
   else: discard
 
 template transitionNodeKindCommon(k: TNodeKind) =
-  let obj {.inject.} = n[]
-  n[] = TNode(kind: k, typ: obj.typ, info: obj.info, flags: obj.flags)
-  # n.comment = obj.comment # shouldn't be needed, the address doesnt' change
-  when defined(useNodeIds):
-    n.id = obj.id
+  # xxx: this template used to not change the address, now it does
+  # xxx: trace the transition for lineage information
+  let nodeId = state.nextNodeId
+  state.nodeList.add NodeData(kind: k)
 
-proc transitionSonsKind*(n: PNode, kind: range[nkComesFrom..nkTupleConstr]) =
+  result = PNode(id: nodeId, state: state) # moves the PNode to a new "address"
+  result.typ = n.typ
+  result.info = n.info
+  result.flags = n.flags
+  result.comment = n.comment
+
+proc transitionSonsKind*(n: PNode, kind: range[nkComesFrom..nkTupleConstr]): PNode =
   transitionNodeKindCommon(kind)
-  n.sons = obj.sons
+  result.sons = n.sons
 
-proc transitionIntKind*(n: PNode, kind: range[nkCharLit..nkUInt64Lit]) =
+proc transitionIntKind*(n: PNode, kind: range[nkCharLit..nkUInt64Lit]): PNode =
   transitionNodeKindCommon(kind)
-  n.intVal = obj.intVal
+  result.intVal = n.intVal
 
-proc transitionNoneToSym*(n: PNode) =
+proc transitionNoneToSym*(n: PNode): PNode =
   transitionNodeKindCommon(nkSym)
 
 template transitionSymKindCommon*(k: TSymKind) =
@@ -1197,7 +1211,7 @@ proc findUnresolvedStatic*(n: PNode): PNode =
     let n = son.findUnresolvedStatic
     if n != nil: return n
 
-  return nil
+  return nilPNode
 
 when false:
   proc containsNil*(n: PNode): bool =

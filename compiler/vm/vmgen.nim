@@ -1432,7 +1432,7 @@ proc canElimAddr(n: PNode): PNode =
       # addr ( nkConv ( deref ( x ) ) ) --> nkConv(x)
       result = copyNode(n[0])
       result.add m[0]
-  of nkError: result = nil
+  of nkError: result = nilPNode
   else:
     if n[0].kind in {nkDerefExpr, nkHiddenDeref}:
       # addr ( deref ( x )) --> x
@@ -1706,7 +1706,7 @@ proc genRdVar(c: PCtx; n: PNode; dest: var TDest; flags: TGenFlags) =
       # see tests/t99bott for an example that triggers it:
       cannotEval(c, n)
 
-template needsRegLoad(): untyped =
+template needsRegLoad(flags: TGenFlags): untyped =
   {gfNode, gfNodeAddr} * flags == {} and
     fitsRegister(n.typ.skipTypes({tyVar, tyLent, tyStatic}))
 
@@ -1717,7 +1717,7 @@ proc genArrAccessOpcode(c: PCtx; n: PNode; dest: var TDest; opc: TOpcode;
   if dest < 0: dest = c.getTemp(n.typ)
   if opc in {opcLdArrAddr, opcLdStrIdxAddr} and gfNodeAddr in flags:
     c.gABC(n, opc, dest, a, b)
-  elif needsRegLoad():
+  elif needsRegLoad(flags):
     var cc = c.getTemp(n.typ)
     c.gABC(n, opc, cc, a, b)
     c.gABC(n, opcNodeToReg, dest, cc)
@@ -1735,7 +1735,7 @@ proc genObjAccess(c: PCtx; n: PNode; dest: var TDest; flags: TGenFlags) =
   if dest < 0: dest = c.getTemp(n.typ)
   if {gfNodeAddr} * flags != {}:
     c.gABC(n, opcLdObjAddr, dest, a, b)
-  elif needsRegLoad():
+  elif needsRegLoad(flags):
     var cc = c.getTemp(n.typ)
     c.gABC(n, opcLdObj, cc, a, b)
     c.gABC(n, opcNodeToReg, dest, cc)
@@ -1807,7 +1807,7 @@ proc genCheckedObjAccess(c: PCtx; n: PNode; dest: var TDest; flags: TGenFlags) =
 
   if {gfNodeAddr} * flags != {}:
     c.gABC(n, opcLdObjAddr, dest, objR, fieldPos)
-  elif needsRegLoad():
+  elif needsRegLoad(flags):
     var cc = c.getTemp(accessExpr.typ)
     c.gABC(n, opcLdObj, cc, objR, fieldPos)
     c.gABC(n, opcNodeToReg, dest, cc)

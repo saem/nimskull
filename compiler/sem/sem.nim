@@ -453,12 +453,12 @@ proc tryConstExpr(c: PContext, n: PNode): PNode =
   try:
     result = evalConstExpr(c.module, c.idgen, c.graph, e)
     if result == nil or result.kind == nkEmpty:
-      result = nil
+      result = nilPNode
     else:
       result = fixupTypeAfterEval(c, result, e)
 
   except ERecoverableError:
-    result = nil
+    result = nilPNode
 
   c.config.errorCounter = oldErrorCount
   c.config.errorMax = oldErrorMax

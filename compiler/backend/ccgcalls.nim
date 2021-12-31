@@ -805,4 +805,4 @@ proc genAsgnCall(p: BProc, le, ri: PNode, d: var TLoc) =
   else:
     genPrefixCall(p, le, ri, d)
 
-proc genCall(p: BProc, e: PNode, d: var TLoc) = genAsgnCall(p, nil, e, d)
+proc genCall(p: BProc, e: PNode, d: var TLoc) = genAsgnCall(p, nilPNode, e, d)

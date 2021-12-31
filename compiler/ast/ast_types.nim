@@ -807,13 +807,71 @@ proc hash*(x: ItemId): Hash =
   h = h !& hash(x.item)
   result = !$h
 
+import std/tables # for DOD ast
 
 type
   TIdObj* {.acyclic.} = object of RootObj
     itemId*: ItemId
   PIdObj* = ref TIdObj
 
-  PNode* = ref TNode
+  #----------------------------------------------------------------------------
+  # DOD AST Draft - Start
+  #----------------------------------------------------------------------------
+
+  # Actually implementing, would go something like:
+  # 1. repeat this pattern for P/TSym and P/TType
+  # 2. drop old P/TNode, P/TSym, and P/TType
+  # 3. implement inline accessors to replace fields
+  #    a. bash compiler until it compiles
+  # 5. discover zany uses of the P/TNode and friends...
+  #    a. bash compiler until it compiles
+  # 6. run all the tests
+  #    a. bash compiler until tests pass
+
+  PNode* = object
+    ## initial conversion point of AST to a data oriented design; rename to
+    ## `PNode` and swap out the old `PNode` for this
+    id*: NodeId
+    state*: State
+
+  NodeData* = object
+    ## bare minimum data we need to know about every node
+    kind*: TNodeKind ## presently the same as the nim node
+
+  AstTree* = OrderedTableRef[NodeId, TNodeSeq]
+    ## store the tree structure for nodes, this is effectively `sons`
+    ## xxx: in here or separately we'll need to account for modules & fragments
+
+  State* = ref object
+    astData*: AstTree          ## actual tree structure for the various AST
+
+    nodeList*: NodeList        ## each node, NodeId is their sequence index
+    nodeFlag*: seq[TNodeFlags] ## flags for each node, rarely access but bloats
+
+    nodeInf*: seq[TLineInfo]   ## info on a per node basis
+
+    # sparse data, not all nodes have these
+    nodeSym*: OrderedTableRef[NodeId, PSym]         ## symbols
+    nodeIdt*: OrderedTableRef[NodeId, PIdent]       ## identifiers
+    nodeTyp*: OrderedTableRef[NodeId, PType]        ## types
+    nodeInt*: OrderedTableRef[NodeId, BiggestInt]   ## int literals
+    nodeFlt*: OrderedTableRef[NodeId, BiggestFloat] ## float literals
+    nodeStr*: OrderedTableRef[NodeId, string]       ## string literals
+    nodeRpt*: OrderedTableRef[NodeId, ReportId]     ## report id
+  
+  # IDs
+  # xxx: disabled distincts until the basics work
+  NodeId* = #[distinct]# int       ## the minimum amount of data identifying a node
+  InfoId* = #[distinct]# int       ## used by Nodes & Symbols for line info
+                              ## an index into the info sequence
+
+  NodeList* = seq[NodeData]
+
+  #----------------------------------------------------------------------------
+  # DOD AST Draft - End
+  #----------------------------------------------------------------------------
+
+  # PNode* = ref TNode
   TNodeSeq* = seq[PNode]
   PType* = ref TType
   PSym* = ref TSym
@@ -1073,7 +1131,110 @@ type
   TImplication* = enum
     impUnknown, impNo, impYes
 
+const emptyReportId* = ReportId(0)
 
+func `==`*(id1, id2: ReportId): bool = uint32(id1) == uint32(id2)
+func `<`*(id1, id2: ReportId): bool = uint32(id1) < uint32(id2)
+
+func isEmpty*(id: ReportId): bool = id == emptyReportId
+
+func `$`*(id: ReportId): string =
+  if id.isEmpty:
+    "<empty report id>"
+
+  else:
+    "<report-id-" & $uint32(id) & ">"
+
+#------------------------------------------------------------------------------
+# DOD AST Draft - Start
+#------------------------------------------------------------------------------
+
+# xxx: need this stuff for distincts
+# proc hash*(n: NodeId): Hash {.borrow.}
+# proc `==`*(a, b: NodeId): bool {.borrow.}
+# proc cmp*(a, b: NodeId): int = cmp(a.int, b.int)
+# proc hash*(n: InfoId): Hash {.borrow.}
+# proc `==`*(a, b: InfoId): bool {.borrow.}
+# proc cmp*(a, b: InfoId): int = cmp(a.int, b.int)
+# proc cmp*(a, b: PSym): int = cmp(cast[int](a), cast[int](b))
+
+const
+  unknownLineInfoId = InfoId -1
+  nilNodeId = NodeId -1
+
+let nilPNode* = PNode(id: NodeId 0, state: nil)
+
+func `==`*(a, b: PNode): bool {.inline.} =
+  a.id == b.id
+func `==`*(a: PNode, b: typeof(nil)): bool {.inline.} =
+  a.id == nilNodeId and a.state == nil
+func `==`*(a: typeof(nil), b: PNode): bool {.inline.} =
+  b.id == nilNodeId and b.state == nil
+func isNil*(a: PNode): bool {.inline.} =
+  a.id == nilNodeId and a.state == nil
+
+var state* = State()
+
+proc nextNodeId*(s: State): NodeId {.inline.} =
+  state.nodeList.len
+
+func id*(n: PNode): int {.inline.} = n.id.int
+func kind*(n: PNode): TNodeKind =
+  n.state.nodeList[n.id].kind
+
+proc typ*(n: PNode): PType {.inline.} =
+  n.state.nodeTyp.getOrDefault(n.id)
+proc `typ=`*(n: PNode, t: PType) {.inline.} =
+  n.state.nodeTyp[n.id] = t
+
+func info*(n: PNode): var TLineInfo {.inline.} =
+  n.state.nodeInf[n.id]
+proc `info=`*(n: PNode, info: TLineInfo) {.inline.} =
+  n.state.nodeInf[n.id] = info
+
+proc flags*(n: PNode): var TNodeFlags {.inline.} =
+  n.state.nodeFlag[n.id]
+proc `flags=`*(n: PNode, flags: TNodeFlags) {.inline.} =
+  n.state.nodeFlag[n.id] = flags
+
+func intVal*(n: PNode): var BiggestInt {.inline.} =
+  n.state.nodeInt[n.id]
+proc `intVal=`*(n: PNode, v: BiggestInt) {.inline.} =
+  n.state.nodeInt[n.id] = v
+
+func floatVal*(n: PNode): BiggestFloat {.inline.} =
+  n.state.nodeFlt[n.id]
+proc `floatVal=`*(n: PNode, v: BiggestFloat) {.inline.} =
+  n.state.nodeFlt[n.id] = v
+
+func strVal*(n: PNode): var string {.inline.} =
+  n.state.nodeStr[n.id]
+proc `strVal=`*(n: PNode, v: string) {.inline.} =
+  n.state.nodeStr[n.id] = v
+
+func sym*(n: PNode): PSym {.inline.} =
+  n.state.nodeSym[n.id]
+proc `sym=`*(n: PNode, sym: PSym) {.inline.} =
+  n.state.nodeSym[n.id] = sym
+
+func ident*(n: PNode): PIdent {.inline.} =
+  n.state.nodeIdt[n.id]
+proc `ident=`*(n: PNode, ident: PIdent) {.inline.} =
+  n.state.nodeIdt[n.id] = ident
+
+proc sons*(n: PNode): var TNodeSeq {.inline.} =
+  n.state.astData[n.id]
+proc `sons=`*(n: PNode, sons: TNodeSeq) {.inline.} =
+  n.state.astData[n.id] = sons
+
+proc reportId*(n: PNode): var ReportId {.inline.} =
+  n.state.nodeRpt[n.id]
+proc `reportId=`*(n: PNode, id: ReportId) {.inline.} =
+  n.state.nodeRpt[n.id] = id
+
+#------------------------------------------------------------------------------
+# DOD AST Draft - End
+#------------------------------------------------------------------------------
 
 type
   EffectsCompat* = enum
@@ -1156,18 +1317,3 @@ type
       # overload resolution.
 
   TExprFlags* = set[TExprFlag]
-
-
-const emptyReportId* = ReportId(0)
-
-func `==`*(id1, id2: ReportId): bool = uint32(id1) == uint32(id2)
-func `<`*(id1, id2: ReportId): bool = uint32(id1) < uint32(id2)
-
-func isEmpty*(id: ReportId): bool = id == emptyReportId
-
-func `$`*(id: ReportId): string =
-  if id.isEmpty:
-    "<empty report id>"
-
-  else:
-    "<report-id-" & $uint32(id) & ">"

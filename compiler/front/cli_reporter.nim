@@ -444,7 +444,7 @@ proc presentFailedCandidates(
     candidates.addDeclaredLocMaybe(conf, err.target)
     candidates.add("\n")
 
-    let nArg = if err.arg < n.len: n[err.arg] else: nil
+    let nArg = if err.arg < n.len: n[err.arg] else: nilPNode
 
     let nameParam = if err.targetArg != nil: err.targetArg.name.s else: ""
     if n.len > 1:

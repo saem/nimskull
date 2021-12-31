@@ -207,12 +207,13 @@ proc derefPtrToReg(address: BiggestInt, typ: PType, r: var TFullReg, isAssign: b
   else: return false
 
 proc createStrKeepNode(x: var TFullReg; keepNode=true) =
+  # xxx: deadcode
   if x.node.isNil or not keepNode:
     x.node = newNode(nkStrLit)
   elif x.node.kind == nkNilLit and keepNode:
     when defined(useNodeIds):
       let id = x.node.id
-    x.node[] = TNode(kind: nkStrLit)
+    x.node = newNode(nkStrLit)
     when defined(useNodeIds):
       x.node.id = id
   elif x.node.kind notin {nkStrLit..nkTripleStrLit} or
@@ -292,7 +293,7 @@ proc writeField(n: var PNode, x: TFullReg) =
   of rkNone: discard
   of rkInt:
     if n.kind == nkNilLit:
-      n[] = TNode(kind: nkIntLit) # ideally, `nkPtrLit`
+      n = newNode(nkIntLit) # ideally, `nkPtrLit`
     n.intVal = x.intVal
   of rkFloat: n.floatVal = x.floatVal
   of rkNode: n = copyValue(x.node)
@@ -2554,7 +2555,7 @@ proc evalMacroCall*(module: PSym; idgen: IdGenerator; g: ModuleGraph; templInstC
       tos.slots[idx] = setupMacroParam(n[idx], gp[i].sym.typ)
     else:
       dec(g.config.evalMacroCounter)
-      c.callsite = nil
+      c.callsite = nilPNode
       localReport(c.config, n.info, SemReport(
         kind: rsemWrongNumberOfGenericParams,
         countMismatch: (
@@ -2569,5 +2570,5 @@ proc evalMacroCall*(module: PSym; idgen: IdGenerator; g: ModuleGraph; templInstC
     globalReport(c.config, n.info, reportAst(rsemCyclicTree, n, sym = sym))
 
   dec(g.config.evalMacroCounter)
-  c.callsite = nil
+  c.callsite = nilPNode
   c.mode = oldMode

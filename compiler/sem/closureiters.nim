@@ -479,7 +479,7 @@ proc newNotCall(g: ModuleGraph; e: PNode): PNode =
   result = newTree(nkCall, newSymNode(g.getSysMagic(e.info, "not", mNot), e.info), e)
   result.typ = g.getSysType(e.info, tyBool)
 
-proc lowerStmtListExprs(ctx: var Ctx, n: PNode, needsSplit: var bool): PNode =
+proc lowerStmtListExprs(ctx: var Ctx, n: var PNode, needsSplit: var bool): PNode =
   result = n
   case n.kind
   of nkSkip:
@@ -837,7 +837,7 @@ proc lowerStmtListExprs(ctx: var Ctx, n: PNode, needsSplit: var bool): PNode =
       result = newNodeI(nkStmtListExpr, n.info)
       result.typ = n.typ
       let (st, ex) = exprToStmtList(n[1])
-      n.transitionSonsKind(nkBlockStmt)
+      n = n.transitionSonsKind(nkBlockStmt)
       n.typ = nil
       n[1] = st
       result.add(n)
@@ -1025,7 +1025,7 @@ proc transformClosureIteratorBody(ctx: var Ctx, n: PNode, gotoOut: PNode): PNode
 
       if exceptBody.kind != nkEmpty:
         ctx.curExcHandlingState = finallyIdx
-        let realExceptIdx = ctx.newState(exceptBody, nil)
+        let realExceptIdx = ctx.newState(exceptBody, nilPNode)
         assert(realExceptIdx == -exceptIdx)
 
       ctx.curExcHandlingState = oldExcHandlingState
@@ -1309,7 +1309,7 @@ proc wrapIntoStateLoop(ctx: var Ctx, n: PNode): PNode =
 
 proc deleteEmptyStates(ctx: var Ctx) =
   let goOut = newTree(nkGotoState, ctx.g.newIntLit(TLineInfo(), -1))
-  ctx.exitStateIdx = ctx.newState(goOut, nil)
+  ctx.exitStateIdx = ctx.newState(goOut, nilPNode)
 
   # Apply new state indexes and mark unused states with -1
   var iValid = 0
@@ -1459,7 +1459,7 @@ proc transformClosureIterator*(g: ModuleGraph; idgen: IdGenerator; fn: PSym, n: 
   #echo "transformed into ", n
   #var n = n.toStmtList
 
-  discard ctx.newState(n, nil)
+  discard ctx.newState(n, nilPNode)
   let gotoOut = newTree(nkGotoState, g.newIntLit(n.info, -1))
 
   var ns = false

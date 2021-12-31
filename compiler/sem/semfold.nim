@@ -150,7 +150,7 @@ proc isIntRangeOrLit(t: PType): bool =
 
 proc evalOp(m: TMagic, n, a, b, c: PNode; idgen: IdGenerator; g: ModuleGraph): PNode =
   # b and c may be nil
-  result = nil
+  result = nilPNode
   case m
   of mOrd: result = newIntNodeT(getOrdValue(a), n, idgen, g)
   of mChr: result = newIntNodeT(getInt(a), n, idgen, g)
@@ -344,12 +344,12 @@ proc evalOp(m: TMagic, n, a, b, c: PNode; idgen: IdGenerator; g: ModuleGraph): P
   else: discard
 
 proc getConstIfExpr(c: PSym, n: PNode; idgen: IdGenerator; g: ModuleGraph): PNode =
-  result = nil
+  result = nilPNode
   for i in 0..<n.len:
     var it = n[i]
     if it.len == 2:
       var e = getConstExpr(c, it[0], idgen, g)
-      if e == nil: return nil
+      if e == nil: return nilPNode
       if getOrdValue(e) != 0:
         if result == nil:
           result = getConstExpr(c, it[1], idgen, g)
@@ -434,7 +434,7 @@ proc foldConv(n, a: PNode; idgen: IdGenerator; g: ModuleGraph; check = false): P
       if check: rangeCheck(n, val, g)
       result = newIntNodeT(val, n, idgen, g)
       if dstTyp.kind in {tyUInt..tyUInt64}:
-        result.transitionIntKind(nkUIntLit)
+        result = result.transitionIntKind(nkUIntLit)
     else:
       result = a
       result.typ = n.typ
@@ -530,7 +530,7 @@ proc foldConStrStr(m: PSym, n: PNode; idgen: IdGenerator; g: ModuleGraph): PNode
   result.strVal = ""
   for i in 1..<n.len:
     let a = getConstExpr(m, n[i], idgen, g)
-    if a == nil: return nil
+    if a == nil: return nilPNode
     result.strVal.add(getStrOrChar(a))
 
 proc newSymNodeTypeDesc*(s: PSym; idgen: IdGenerator; info: TLineInfo): PNode =
@@ -542,7 +542,7 @@ proc newSymNodeTypeDesc*(s: PSym; idgen: IdGenerator; info: TLineInfo): PNode =
     result.typ = s.typ
 
 proc getConstExpr(m: PSym, n: PNode; idgen: IdGenerator; g: ModuleGraph): PNode =
-  result = nil
+  result = nilPNode
   case n.kind
   of nkSym:
     var s = n.sym
@@ -649,11 +649,11 @@ proc getConstExpr(m: PSym, n: PNode; idgen: IdGenerator; g: ModuleGraph): PNode 
         # This fixes bug #544.
         result = newIntNodeT(lengthOrd(g.config, n[1].typ), n, idgen, g)
       of mSizeOf:
-        result = foldSizeOf(g.config, n, nil)
+        result = foldSizeOf(g.config, n, nilPNode)
       of mAlignOf:
-        result = foldAlignOf(g.config, n, nil)
+        result = foldAlignOf(g.config, n, nilPNode)
       of mOffsetOf:
-        result = foldOffsetOf(g.config, n, nil)
+        result = foldOffsetOf(g.config, n, nilPNode)
       of mAstToStr:
         result = newStrNodeT(renderTree(n[1], {renderNoComments}), n, g)
       of mConStrStr:
@@ -677,7 +677,7 @@ proc getConstExpr(m: PSym, n: PNode; idgen: IdGenerator; g: ModuleGraph): PNode 
     result = copyNode(n)
     for i, son in n.pairs:
       var a = getConstExpr(m, son, idgen, g)
-      if a == nil: return nil
+      if a == nil: return nilPNode
       result.add a
     incl(result.flags, nfAllConst)
   of nkRange:
@@ -703,13 +703,13 @@ proc getConstExpr(m: PSym, n: PNode; idgen: IdGenerator; g: ModuleGraph): PNode 
         let exprNew = copyNode(expr) # nkExprColonExpr
         exprNew.add expr[0]
         let a = getConstExpr(m, expr[1], idgen, g)
-        if a == nil: return nil
+        if a == nil: return nilPNode
         exprNew.add a
         result.add exprNew
     else:
       for i, expr in n.pairs:
         let a = getConstExpr(m, expr, idgen, g)
-        if a == nil: return nil
+        if a == nil: return nilPNode
         result.add a
     incl(result.flags, nfAllConst)
   of nkChckRangeF, nkChckRange64, nkChckRange:
@@ -735,7 +735,7 @@ proc getConstExpr(m: PSym, n: PNode; idgen: IdGenerator; g: ModuleGraph): PNode 
   of nkDerefExpr, nkHiddenDeref:
     let a = getConstExpr(m, n[0], idgen, g)
     if a != nil and a.kind == nkNilLit:
-      result = nil
+      result = nilPNode
       #localReport(g.config, n.info, "nil dereference is not allowed")
   of nkCast:
     var a = getConstExpr(m, n[1], idgen, g)

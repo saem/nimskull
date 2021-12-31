@@ -573,7 +573,7 @@ proc genComputedGoto(p: BProc; n: PNode) =
       let it = n[j]
       if it.kind in {nkLetSection, nkVarSection}:
         let asgn = copyNode(it)
-        asgn.transitionSonsKind(nkAsgn)
+        discard asgn.transitionSonsKind(nkAsgn)
         asgn.sons.setLen 2
         for sym, value in it.fieldValuePairs:
           if value.kind != nkEmpty:
@@ -1008,7 +1008,7 @@ proc genTryCpp(p: BProc, t: PNode, d: var TLoc) =
 
   p.procSec(cpsInit).add(ropecg(p.module, "\tstd::exception_ptr T$1_ = nullptr;", [etmp]))
 
-  let fin = if t[^1].kind == nkFinally: t[^1] else: nil
+  let fin = if t[^1].kind == nkFinally: t[^1] else: nilPNode
   p.nestedTryStmts.add((fin, false, 0.Natural))
 
   if t.kind == nkHiddenTryStmt:
@@ -1046,7 +1046,7 @@ proc genTryCpp(p: BProc, t: PNode, d: var TLoc) =
       endBlock(p)
     else:
       var orExpr = Rope(nil)
-      var exvar = PNode(nil)
+      var exvar = nilPNode
       for j in 0..<t[i].len - 1:
         var typeNode = t[i][j]
         if t[i][j].isInfixAs():
@@ -1166,7 +1166,7 @@ proc genTryCppOld(p: BProc, t: PNode, d: var TLoc) =
     getTemp(p, t.typ, d)
   genLineDir(p, t)
   discard cgsym(p.module, "popCurrentExceptionEx")
-  let fin = if t[^1].kind == nkFinally: t[^1] else: nil
+  let fin = if t[^1].kind == nkFinally: t[^1] else: nilPNode
   p.nestedTryStmts.add((fin, false, 0.Natural))
   startBlock(p, "try {$n")
   expr(p, t[0], d)
@@ -1230,7 +1230,7 @@ proc bodyCanRaise(p: BProc; n: PNode): bool =
     result = false
 
 proc genTryGoto(p: BProc; t: PNode; d: var TLoc) =
-  let fin = if t[^1].kind == nkFinally: t[^1] else: nil
+  let fin = if t[^1].kind == nkFinally: t[^1] else: nilPNode
   inc p.labels
   let lab = p.labels
   let hasExcept = t[1].kind == nkExceptBranch
@@ -1368,7 +1368,7 @@ proc genTrySetjmp(p: BProc, t: PNode, d: var TLoc) =
     else:
       linefmt(p, cpsStmts, "$1.status = setjmp($1.context);$n", [safePoint])
     lineCg(p, cpsStmts, "if ($1.status == 0) {$n", [safePoint])
-  let fin = if t[^1].kind == nkFinally: t[^1] else: nil
+  let fin = if t[^1].kind == nkFinally: t[^1] else: nilPNode
   p.nestedTryStmts.add((fin, quirkyExceptions, 0.Natural))
   expr(p, t[0], d)
   if not quirkyExceptions:
