@@ -787,7 +787,7 @@ proc loadNodes*(c: var PackedDecoder; g: var PackedModuleGraph; thisModule: int;
     let (n1, n2) = sons2(tree, n)
     assert n1.kind == nkInt32Lit
     assert n2.kind == nkInt32Lit
-    result = transitionNoneToSym(result)
+    result.transitionNoneToSym()
     result.sym = loadSym(c, g, thisModule, PackedItemId(module: n1.litId, item: tree.nodes[n2.int].operand))
   else:
     for n0 in sonsReadonly(tree, n):

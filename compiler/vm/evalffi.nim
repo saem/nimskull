@@ -327,10 +327,12 @@ proc unpack(conf: ConfigRef, x: pointer, typ: PType, n: PNode): PNode =
       result = newNode(nkNilLit)
       result.typ = typ
     else:
-      reset n[]
+      # reset n[]
+      # result = n
+      # result[] = TNode(kind: nkNilLit)
+      n.transitionToNilLit()
+      n.typ = typ
       result = n
-      result[] = TNode(kind: nkNilLit)
-      result.typ = typ
 
   template awi(kind, v: untyped): untyped = aw(kind, v, intVal)
   template awf(kind, v: untyped): untyped = aw(kind, v, floatVal)

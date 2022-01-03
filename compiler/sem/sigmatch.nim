@@ -2015,7 +2015,7 @@ proc localConvMatch(c: PContext, m: var TCandidate, f, a: PType,
     var r = typeRel(m, f[0], result.typ)
     if r < isGeneric: return nilPNode
     if result.kind == nkCall:
-      result = result.transitionSonsKind(nkHiddenCallConv)
+      result.transitionSonsKind(nkHiddenCallConv)
     inc(m.convMatches)
     if r == isGeneric:
       result.typ = getInstantiatedType(c, arg, m, base(f))

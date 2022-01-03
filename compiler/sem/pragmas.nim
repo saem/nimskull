@@ -1152,7 +1152,7 @@ proc semCustomPragma(c: PContext, n: PNode): PNode =
     result = result[0]
   elif n.kind == nkExprColonExpr and r.len == 2:
     # pragma(arg) -> pragma: arg
-    result = result.transitionSonsKind(n.kind)
+    result.transitionSonsKind(n.kind)
 
 proc processEffectsOf(c: PContext, n: PNode; owner: PSym): PNode =
   proc processParam(c: PContext; n: PNode): PNode =

@@ -186,7 +186,7 @@ proc presentFailedCandidates(
       if err.firstMismatch.arg < n.len:
         n[err.firstMismatch.arg]
       else:
-        nil
+        nilPNode
 
     cand.targetArg = err.firstMismatch.formal
     cand.diagnostics = err.diagnostics
@@ -341,7 +341,7 @@ proc resolveOverloads(c: PContext, n, orig: PNode,
     initialBinding = f
     f = f[0]
   else:
-    initialBinding = nil
+    initialBinding = nilPNode
 
   template pickBest(headSymbol) =
     pickBestCandidate(c, headSymbol, n, orig, initialBinding,
@@ -373,8 +373,8 @@ proc resolveOverloads(c: PContext, n, orig: PNode,
       if f.ident.s notin [".", ".()"]: # a dot call on a dot call is invalid
         # leave the op head symbol empty,
         # we are going to try multiple variants
-        n.sons[0..1] = [nil, n[1], f]
-        orig.sons[0..1] = [nil, orig[1], f]
+        n.sons[0..1] = [nilPNode, n[1], f]
+        orig.sons[0..1] = [nilPNode, orig[1], f]
 
         template tryOp(x) =
           let op = newIdentNode(getIdent(c.cache, x), n.info)
@@ -459,7 +459,7 @@ proc instGenericConvertersSons*(c: PContext, n: PNode, x: TCandidate) =
 
 proc indexTypesMatch(c: PContext, f, a: PType, arg: PNode): PNode =
   var m = newCandidate(c, f)
-  result = paramTypesMatch(m, f, a, arg, nil)
+  result = paramTypesMatch(m, f, a, arg, nilPNode)
   if m.genericConverter and result != nil:
     instGenericConvertersArg(c, result, m)
 
@@ -467,7 +467,7 @@ proc inferWithMetatype(c: PContext, formal: PType,
                        arg: PNode, coerceDistincts = false): PNode =
   var m = newCandidate(c, formal)
   m.coerceDistincts = coerceDistincts
-  result = paramTypesMatch(m, formal, arg.typ, arg, nil)
+  result = paramTypesMatch(m, formal, arg.typ, arg, nilPNode)
   if m.genericConverter and result != nil:
     instGenericConvertersArg(c, result, m)
   if result != nil:
@@ -609,7 +609,7 @@ proc explicitGenericInstError(c: PContext; n: PNode): PNode =
 
 proc explicitGenericSym(c: PContext, n: PNode, s: PSym): PNode =
   # binding has to stay 'nil' for this to work!
-  var m = newCandidate(c, s, nil)
+  var m = newCandidate(c, s, nilPNode)
 
   for i in 1..<n.len:
     let formal = s.ast[genericParamsPos][i-1].typ
@@ -623,7 +623,7 @@ proc explicitGenericSym(c: PContext, n: PNode, s: PSym): PNode =
         arg.sons = @[evaluated.typ]
         arg.n = evaluated
     let tm = typeRel(m, formal, arg)
-    if tm in {isNone, isConvertible}: return nil
+    if tm in {isNone, isConvertible}: return nilPNode
   var newInst = generateInstance(c, s, m.bindings, n.info)
   newInst.typ.flags.excl tfUnresolved
   let info = getCallLineInfo(n)

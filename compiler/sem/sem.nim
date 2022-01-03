@@ -639,6 +639,7 @@ proc setGenericParamsMisc(c: PContext; n: PNode) =
     n[genericParamsPos] = semGenericParamList(c, orig)
 
   if n[miscPos].kind == nkEmpty:
+    validateProcLike(n)
     n[miscPos] = newTree(nkBracket, c.graph.emptyNode, orig)
   else:
     n[miscPos][1] = orig
@@ -789,7 +790,7 @@ proc myProcess(context: PPassContext, n: PNode): PNode {.nosinks.} =
       msgs.setInfoContextLen(c.config, oldContextLen)
       if getCurrentException() of ESuggestDone:
         c.suggestionsMade = true
-        result = nil
+        result = nilPNode
       else:
         result = newNodeI(nkEmpty, n.info)
   storeRodNode(c, result)

@@ -30,13 +30,11 @@ import
 
 export ast_types, int128
 
-template nodeId(n: PNode): int = cast[int](n)
-
 type Gconfig = object
   ## we put comments in a side channel to avoid increasing `sizeof(TNode)`,
   ## which reduces memory usage given that `PNode` is the most allocated
   ## type by far.
-  comments: Table[int, string] # nodeId => comment
+  comments: Table[NodeId, string] # nodeId => comment
   useIc*: bool
 
 var gconfig {.threadvar.}: Gconfig
@@ -380,24 +378,17 @@ proc getDeclPragma*(n: PNode): PNode =
     assert result.kind == nkPragma, $(result.kind, n.kind)
 
 when defined(useNodeIds):
-  const nodeIdToDebug* = -1 # 2322968
+  const nodeIdToDebug* = NodeId -1 # 2322968
 
 template newNodeImpl(kind: TNodeKind, info2: TLineInfo) =
   # result = PNode(kind: kind, info: info2)
   let nodeId = state.nextNodeId()
   state.nodeList.add NodeData(kind: kind)
   state.nodeInf.add info2
+  state.nodeFlag.add {}
   result = PNode(id: nodeId, state: state)
 
-  when defined(nimsuggest):
-    # this would add overhead, so we skip it; it results in a small amount of leaked entries
-    # for old PNode that gets re-allocated at the same address as a PNode that
-    # has `nfHasComment` set (and an entry in that table). Only `nfHasComment`
-    # should be used to test whether a PNode has a comment; gconfig.comments
-    # can contain extra entries for deleted PNode's with comments.
-    gconfig.comments.del(result.id)
-
-template setIdMaybe() =
+template checkNodeIdForDebug() =
   when defined(useNodeIds):
     if result.id == nodeIdToDebug:
       echo "KIND ", result.kind
@@ -406,19 +397,19 @@ template setIdMaybe() =
 proc newNode*(kind: TNodeKind): PNode =
   ## new node with unknown line info, no type, and no children
   newNodeImpl(kind, unknownLineInfo)
-  setIdMaybe()
+  checkNodeIdForDebug()
 
 proc newNodeI*(kind: TNodeKind, info: TLineInfo): PNode =
   ## new node with line info, no type, and no children
   newNodeImpl(kind, info)
-  setIdMaybe()
+  checkNodeIdForDebug()
 
 proc newNodeI*(kind: TNodeKind, info: TLineInfo, children: int): PNode =
   ## new node with line info, type, and children
   newNodeImpl(kind, info)
   if children > 0:
     newSeq(result.sons, children)
-  setIdMaybe()
+  checkNodeIdForDebug()
 
 proc newNodeIT*(kind: TNodeKind, info: TLineInfo, typ: PType): PNode =
   ## new node with line info, type, and no children
@@ -815,6 +806,31 @@ proc delSon*(father: PNode, idx: int) =
   for i in idx..<father.len - 1: father[i] = father[i + 1]
   father.sons.setLen(father.len - 1)
 
+proc applyToNode*(src, dest: PNode) =
+  ## used for the VM when we pass nodes "by value"
+  assert not dest.isNil
+  assert not src.isNil
+  assert dest.id != src.id, "applying to self, id: " & $src.id
+  if src.state.astData.hasKey(src.id):
+    src.state.astData[dest.id] = src.state.astData[src.id]
+  src.state.nodeList[dest.idx] = src.state.nodeList[src.idx]
+  src.state.nodeFlag[dest.idx] = src.state.nodeFlag[src.idx]
+  src.state.nodeInf[dest.idx] = src.state.nodeInf[src.idx]
+  if src.state.nodeSym.hasKey(src.id):
+    src.state.nodeSym[dest.id] = src.state.nodeSym[src.id]
+  if src.state.nodeIdt.hasKey(src.id):
+    src.state.nodeIdt[dest.id] = src.state.nodeIdt[src.id]
+  if src.state.nodeTyp.hasKey(src.id):
+    src.state.nodeTyp[dest.id] = src.state.nodeTyp[src.id]
+  if src.state.nodeInt.hasKey(src.id):
+    src.state.nodeInt[dest.id] = src.state.nodeInt[src.id]
+  if src.state.nodeFlt.hasKey(src.id):
+    src.state.nodeFlt[dest.id] = src.state.nodeFlt[src.id]
+  if src.state.nodeStr.hasKey(src.id):
+    src.state.nodeStr[dest.id] = src.state.nodeStr[src.id]
+  if src.state.nodeRpt.hasKey(src.id):
+    src.state.nodeRpt[dest.id] = src.state.nodeRpt[src.id]
+
 proc copyNode*(src: PNode): PNode =
   # does not copy its sons!
   if src == nil:
@@ -835,27 +851,76 @@ proc copyNode*(src: PNode): PNode =
   of nkStrLit..nkTripleStrLit: result.strVal = src.strVal
   else: discard
 
+type
+  NodeDataToClear = enum
+    nodeClearAst,
+    nodeClearFlg,
+    nodeClearInf,
+    nodeClearSym,
+    nodeClearIdt,
+    nodeClearTyp,
+    nodeClearInt,
+    nodeClearFlt,
+    nodeClearStr,
+    nodeClearRpt,
+    nodeClearCmt
+
 template transitionNodeKindCommon(k: TNodeKind) =
+  # xxx: this used to be a memory copy, but now we just change the kind
   # xxx: this template used to not change the address, now it does
   # xxx: trace the transition for lineage information
-  let nodeId = state.nextNodeId
-  state.nodeList.add NodeData(kind: k)
 
-  result = PNode(id: nodeId, state: state) # moves the PNode to a new "address"
-  result.typ = n.typ
-  result.info = n.info
-  result.flags = n.flags
-  result.comment = n.comment
+  n.state.nodeList[n.idx].kind = k
 
-proc transitionSonsKind*(n: PNode, kind: range[nkComesFrom..nkTupleConstr]): PNode =
+  # clear old data: this was added as part of the data oriented design
+  #                 refactor; might be a source of bugs wrt to how legacy code
+  #                 expects things to work, try to favour fixing legacy code
+  let clears =
+    case k
+    of nkCharLit..nkUInt64Lit:
+      {nodeClearAst, nodeClearSym, nodeClearIdt, nodeClearFlt, nodeClearStr, nodeClearRpt}
+    of nkFloatLit..nkFloat128Lit:
+      {nodeClearAst, nodeClearSym, nodeClearIdt, nodeClearInt, nodeClearStr, nodeClearRpt}
+    of nkStrLit..nkTripleStrLit:
+      {nodeClearAst, nodeClearSym, nodeClearIdt, nodeClearInt, nodeClearFlt, nodeClearRpt}
+    of nkSym:
+      {nodeClearAst, nodeClearIdt, nodeClearInt, nodeClearFlt, nodeClearStr, nodeClearRpt}
+    of nkIdent:
+      {nodeClearAst, nodeClearSym, nodeClearInt, nodeClearFlt, nodeClearStr, nodeClearRpt}
+    of nkError:
+      {nodeClearIdt, nodeClearSym, nodeClearInt, nodeClearFlt, nodeClearStr}
+    else:
+      {nodeClearIdt, nodeClearSym, nodeClearInt, nodeClearFlt, nodeClearStr, nodeClearRpt}
+  
+  for clear in clears.items:
+    case clear
+    of nodeClearAst: n.state.astData.del(n.id)
+    of nodeClearFlg: n.state.nodeFlag[n.idx] = {}
+    of nodeClearInf: n.state.nodeInf[n.idx] = unknownLineInfo
+    of nodeClearSym: n.state.nodeSym.del(n.id)
+    of nodeClearIdt: n.state.nodeIdt.del(n.id)
+    of nodeClearTyp: n.state.nodeTyp.del(n.id)
+    of nodeClearInt: n.state.nodeInt.del(n.id)
+    of nodeClearFlt: n.state.nodeFlt.del(n.id)
+    of nodeClearStr: n.state.nodeStr.del(n.id)
+    of nodeClearRpt: n.state.nodeRpt.del(n.id)
+    of nodeClearCmt: gconfig.comments.del(n.id)
+
+proc transitionSonsKind*(n: PNode, kind: range[nkComesFrom..nkTupleConstr]) =
+  # xxx: just change the kind now, might need clearing/validation here
   transitionNodeKindCommon(kind)
-  result.sons = n.sons
 
-proc transitionIntKind*(n: PNode, kind: range[nkCharLit..nkUInt64Lit]): PNode =
+proc transitionIntKind*(n: PNode, kind: range[nkCharLit..nkUInt64Lit]) =
+  # xxx: just change the kind now, might need clearing/validation here
   transitionNodeKindCommon(kind)
-  result.intVal = n.intVal
 
-proc transitionNoneToSym*(n: PNode): PNode =
+proc transitionToNilLit*(n: PNode) =
+  ## used to reset a node to a nil literal
+  transitionNodeKindCommon(nkNilLit)
+
+proc transitionNoneToSym*(n: PNode) =
+  # xxx: just change the kind now, might need clearing/validation here
+  #      see the hack in `semtypes.semTypeIdent`
   transitionNodeKindCommon(nkSym)
 
 template transitionSymKindCommon*(k: TSymKind) =
@@ -890,7 +955,8 @@ template copyNodeImpl(dst, src, processSonsStmt) =
   dst.typ = src.typ
   dst.flags = src.flags * PersistentNodeFlags
   dst.comment = src.comment
-  dst.reportId = src.reportId
+  if src.kind == nkError:
+    dst.reportId = src.reportId
   when defined(useNodeIds):
     if dst.id == nodeIdToDebug:
       echo "COMES FROM ", src.id

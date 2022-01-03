@@ -66,7 +66,7 @@ proc semEnum(c: PContext, n: PNode, prev: PType): PType =
         identToReplace = addr n[i][0]
 
       var v = semConstExpr(c, n[i][1])
-      var strVal: PNode = nil
+      var strVal: PNode = nilPNode
       case skipTypes(v.typ, abstractInst-{tyTypeDesc}).kind
       of tyTuple:
         if v.len == 2:
@@ -476,11 +476,7 @@ proc semTypeIdent(c: PContext, n: PNode): PSym =
       if result.typ.kind != tyGenericParam:
         # XXX get rid of this hack!
         var oldInfo = n.info
-        when defined(useNodeIds):
-          let oldId = n.id
-        reset(n[])
-        when defined(useNodeIds):
-          n.id = oldId
+        n.flags = {}
         n.transitionNoneToSym()
         n.sym = result
         n.info = oldInfo
@@ -535,7 +531,7 @@ proc semTuple(c: PContext, n: PNode, prev: PType): PType =
       styleCheckDef(c.config, a[j].info, field)
       onDef(field.info, field)
 
-  if result.n.len == 0: result.n = nil
+  if result.n.len == 0: result.n = nilPNode
   if isTupleRecursive(result):
     localReport(c.config, n.info, reportTyp(
       rsemIllegalRecursion, result))
@@ -833,7 +829,7 @@ proc semRecordNodeAux(c: PContext, n: PNode, check: var IntSet, pos: var int,
   if n == nil: return
   case n.kind
   of nkRecWhen:
-    var branch: PNode = nil   # the branch to take
+    var branch: PNode = nilPNode   # the branch to take
     for i in 0..<n.len:
       var it = n[i]
       if it == nil:
@@ -1371,8 +1367,8 @@ proc semProcTypeNode(c: PContext, n, genericParams: PNode,
     checkMinSonsLen(a, 3, c.config)
     var
       typ: PType = nil
-      def: PNode = nil
-      constraint: PNode = nil
+      def: PNode = nilPNode
+      constraint: PNode = nilPNode
       hasType = a[^2].kind != nkEmpty
       hasDefault = a[^1].kind != nkEmpty
 
@@ -1838,7 +1834,7 @@ proc semProcTypeWithScope(c: PContext, n: PNode,
       return semTypeNode(c, macroEval, prev)
 
   openScope(c)
-  result = semProcTypeNode(c, n[0], nil, prev, kind, isType=true)
+  result = semProcTypeNode(c, n[0], nilPNode, prev, kind, isType=true)
   # start with 'ccClosure', but of course pragmas can overwrite this:
   result.callConv = ccClosure
   # dummy symbol for `pragma`:

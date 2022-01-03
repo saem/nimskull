@@ -109,7 +109,7 @@ type
     of rkFloat: floatVal*: BiggestFloat
     of rkNode: node*: PNode
     of rkRegisterAddr: regAddr*: ptr TFullReg
-    of rkNodeAddr: nodeAddr*: ptr PNode
+    of rkNodeAddr: nodeAddr*: NodeId
 
   PProc* = ref object
     blocks*: seq[TBlock]    # blocks; temp data structure

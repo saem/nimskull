@@ -288,7 +288,7 @@ proc semConstructFields(c: PContext, n: PNode,
       if discrimAssign != nil and discrimAssign.kind == nkError:
         mergeInitStatus(result, initError)
         return
-      var discriminatorVal = if discrimAssign.isNil: nil else: discrimAssign[1]
+      var discriminatorVal = if discrimAssign.isNil: nilPNode else: discrimAssign[1]
 
       if discriminatorVal != nil:
         discriminatorVal = discriminatorVal.skipHidden
@@ -364,7 +364,7 @@ proc semConstructFields(c: PContext, n: PNode,
         mergeInitStatus(result, initError)
         return
 
-      let discriminatorVal = if discrimAssign.isNil: nil else: discrimAssign[1]
+      let discriminatorVal = if discrimAssign.isNil: nilPNode else: discrimAssign[1]
       if discriminatorVal == nil:
         # None of the branches were explicitly selected by the user and no
         # value was given to the discrimator. We can assume that it will be
