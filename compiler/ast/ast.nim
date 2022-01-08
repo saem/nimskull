@@ -378,7 +378,7 @@ proc getDeclPragma*(n: PNode): PNode =
     assert result.kind == nkPragma, $(result.kind, n.kind)
 
 when defined(useNodeIds):
-  const nodeIdToDebug* = NodeId -1 # 2322968
+  const nodeIdToDebug* = NodeId 1821 # 2322968
 
 template newNodeImpl(kind: TNodeKind, info2: TLineInfo) =
   # result = PNode(kind: kind, info: info2)
@@ -386,7 +386,7 @@ template newNodeImpl(kind: TNodeKind, info2: TLineInfo) =
   state.nodeList.add NodeData(kind: kind)
   state.nodeInf.add info2
   state.nodeFlag.add {}
-  result = PNode(id: nodeId, state: state)
+  result = PNode(id: nodeId)
 
 template checkNodeIdForDebug() =
   when defined(useNodeIds):
@@ -811,25 +811,25 @@ proc applyToNode*(src, dest: PNode) =
   assert not dest.isNil
   assert not src.isNil
   assert dest.id != src.id, "applying to self, id: " & $src.id
-  if src.state.astData.hasKey(src.id):
-    src.state.astData[dest.id] = src.state.astData[src.id]
-  src.state.nodeList[dest.idx] = src.state.nodeList[src.idx]
-  src.state.nodeFlag[dest.idx] = src.state.nodeFlag[src.idx]
-  src.state.nodeInf[dest.idx] = src.state.nodeInf[src.idx]
-  if src.state.nodeSym.hasKey(src.id):
-    src.state.nodeSym[dest.id] = src.state.nodeSym[src.id]
-  if src.state.nodeIdt.hasKey(src.id):
-    src.state.nodeIdt[dest.id] = src.state.nodeIdt[src.id]
-  if src.state.nodeTyp.hasKey(src.id):
-    src.state.nodeTyp[dest.id] = src.state.nodeTyp[src.id]
-  if src.state.nodeInt.hasKey(src.id):
-    src.state.nodeInt[dest.id] = src.state.nodeInt[src.id]
-  if src.state.nodeFlt.hasKey(src.id):
-    src.state.nodeFlt[dest.id] = src.state.nodeFlt[src.id]
-  if src.state.nodeStr.hasKey(src.id):
-    src.state.nodeStr[dest.id] = src.state.nodeStr[src.id]
-  if src.state.nodeRpt.hasKey(src.id):
-    src.state.nodeRpt[dest.id] = src.state.nodeRpt[src.id]
+  if state.astData.hasKey(src.id):
+    state.astData[dest.id] = state.astData[src.id]
+  state.nodeList[dest.idx] = state.nodeList[src.idx]
+  state.nodeFlag[dest.idx] = state.nodeFlag[src.idx]
+  state.nodeInf[dest.idx] = state.nodeInf[src.idx]
+  if state.nodeSym.hasKey(src.id):
+    state.nodeSym[dest.id] = state.nodeSym[src.id]
+  if state.nodeIdt.hasKey(src.id):
+    state.nodeIdt[dest.id] = state.nodeIdt[src.id]
+  if state.nodeTyp.hasKey(src.id):
+    state.nodeTyp[dest.id] = state.nodeTyp[src.id]
+  if state.nodeInt.hasKey(src.id):
+    state.nodeInt[dest.id] = state.nodeInt[src.id]
+  if state.nodeFlt.hasKey(src.id):
+    state.nodeFlt[dest.id] = state.nodeFlt[src.id]
+  if state.nodeStr.hasKey(src.id):
+    state.nodeStr[dest.id] = state.nodeStr[src.id]
+  if state.nodeRpt.hasKey(src.id):
+    state.nodeRpt[dest.id] = state.nodeRpt[src.id]
 
 proc copyNode*(src: PNode): PNode =
   # does not copy its sons!
@@ -870,7 +870,7 @@ template transitionNodeKindCommon(k: TNodeKind) =
   # xxx: this template used to not change the address, now it does
   # xxx: trace the transition for lineage information
 
-  n.state.nodeList[n.idx].kind = k
+  state.nodeList[n.idx].kind = k
 
   # clear old data: this was added as part of the data oriented design
   #                 refactor; might be a source of bugs wrt to how legacy code
@@ -894,16 +894,16 @@ template transitionNodeKindCommon(k: TNodeKind) =
   
   for clear in clears.items:
     case clear
-    of nodeClearAst: n.state.astData.del(n.id)
-    of nodeClearFlg: n.state.nodeFlag[n.idx] = {}
-    of nodeClearInf: n.state.nodeInf[n.idx] = unknownLineInfo
-    of nodeClearSym: n.state.nodeSym.del(n.id)
-    of nodeClearIdt: n.state.nodeIdt.del(n.id)
-    of nodeClearTyp: n.state.nodeTyp.del(n.id)
-    of nodeClearInt: n.state.nodeInt.del(n.id)
-    of nodeClearFlt: n.state.nodeFlt.del(n.id)
-    of nodeClearStr: n.state.nodeStr.del(n.id)
-    of nodeClearRpt: n.state.nodeRpt.del(n.id)
+    of nodeClearAst: state.astData.del(n.id)
+    of nodeClearFlg: state.nodeFlag[n.idx] = {}
+    of nodeClearInf: state.nodeInf[n.idx] = unknownLineInfo
+    of nodeClearSym: state.nodeSym.del(n.id)
+    of nodeClearIdt: state.nodeIdt.del(n.id)
+    of nodeClearTyp: state.nodeTyp.del(n.id)
+    of nodeClearInt: state.nodeInt.del(n.id)
+    of nodeClearFlt: state.nodeFlt.del(n.id)
+    of nodeClearStr: state.nodeStr.del(n.id)
+    of nodeClearRpt: state.nodeRpt.del(n.id)
     of nodeClearCmt: gconfig.comments.del(n.id)
 
 proc transitionSonsKind*(n: PNode, kind: range[nkComesFrom..nkTupleConstr]) =

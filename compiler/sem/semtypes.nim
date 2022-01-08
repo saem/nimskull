@@ -1528,13 +1528,13 @@ proc semProcTypeNode(c: PContext, n, genericParams: PNode,
       result.n.typ = r
 
   if genericParams.isGenericParams:
-    for n in genericParams:
-      if {sfUsed, sfAnon} * n.sym.flags == {}:
+    for gp in genericParams:
+      if {sfUsed, sfAnon} * gp.sym.flags == {}:
         result.flags.incl tfUnresolved
 
-      if tfWildcard in n.sym.typ.flags:
-        n.sym.transitionGenericParamToType()
-        n.sym.typ.flags.excl tfWildcard
+      if tfWildcard in gp.sym.typ.flags:
+        gp.sym.transitionGenericParamToType()
+        gp.sym.typ.flags.excl tfWildcard
 
 proc semStmtListType(c: PContext, n: PNode, prev: PType): PType =
   checkMinSonsLen(n, 1, c.config)

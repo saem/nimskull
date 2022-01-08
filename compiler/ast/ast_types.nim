@@ -832,13 +832,13 @@ type
     ## initial conversion point of AST to a data oriented design; rename to
     ## `PNode` and swap out the old `PNode` for this
     id*: NodeId
-    state*: State
+    # state*: State
 
   NodeData* = object
     ## bare minimum data we need to know about every node
     kind*: TNodeKind ## presently the same as the nim node
 
-  AstTree* = OrderedTableRef[NodeId, TNodeSeq]
+  AstTree* = OrderedTable[NodeId, TNodeSeq]
     ## store the tree structure for nodes, this is effectively `sons`
     ## xxx: in here or separately we'll need to account for modules & fragments
 
@@ -851,13 +851,13 @@ type
     astData*: AstTree          ## actual tree structure for the various AST
 
     # sparse data, not all nodes have these
-    nodeSym*: OrderedTableRef[NodeId, PSym]         ## symbols
-    nodeIdt*: OrderedTableRef[NodeId, PIdent]       ## identifiers
-    nodeTyp*: OrderedTableRef[NodeId, PType]        ## types
-    nodeInt*: OrderedTableRef[NodeId, BiggestInt]   ## int literals
-    nodeFlt*: OrderedTableRef[NodeId, BiggestFloat] ## float literals
-    nodeStr*: OrderedTableRef[NodeId, string]       ## string literals
-    nodeRpt*: OrderedTableRef[NodeId, ReportId]     ## report id
+    nodeSym*: OrderedTable[NodeId, PSym]         ## symbols
+    nodeIdt*: OrderedTable[NodeId, PIdent]       ## identifiers
+    nodeTyp*: OrderedTable[NodeId, PType]        ## types
+    nodeInt*: OrderedTable[NodeId, BiggestInt]   ## int literals
+    nodeFlt*: OrderedTable[NodeId, BiggestFloat] ## float literals
+    nodeStr*: OrderedTable[NodeId, string]       ## string literals
+    nodeRpt*: OrderedTable[NodeId, ReportId]     ## report id
   
   # IDs
   # xxx: disabled distincts until the basics work
@@ -1163,32 +1163,32 @@ const
   # unknownLineInfoId = InfoId 0
   nilNodeId = NodeId 0
 
-let nilPNode* = PNode(id: nilNodeId, state: nil)
+let nilPNode* = PNode(id: nilNodeId)
 
 func `==`*(a, b: PNode): bool {.inline.} =
   a.id == b.id
 func `==`*(a: PNode, b: typeof(nil)): bool {.inline.} =
-  a.id == nilNodeId and a.state == nil
+  a.id == nilNodeId
 func `==`*(a: typeof(nil), b: PNode): bool {.inline.} =
-  b.id == nilNodeId and b.state == nil
+  b.id == nilNodeId
 func isNil*(a: PNode): bool {.inline.} =
-  a.id == nilNodeId and a.state == nil
+  a.id == nilNodeId
 
 var state* = State(
-    astData: newOrderedTable[NodeId, seq[PNode]](),
-    nodeSym: newOrderedTable[NodeId, PSym](),
-    nodeIdt: newOrderedTable[NodeId, PIdent](),
-    nodeTyp: newOrderedTable[NodeId, PType](),
-    nodeInt: newOrderedTable[NodeId, BiggestInt](),
-    nodeFlt: newOrderedTable[NodeId, BiggestFloat](),
-    nodeStr: newOrderedTable[NodeId, string](),
-    nodeRpt: newOrderedTable[NodeId, ReportId]()
+    # astData: newOrderedTable[NodeId, seq[PNode]](),
+    # nodeSym: newOrderedTable[NodeId, PSym](),
+    # nodeIdt: newOrderedTable[NodeId, PIdent](),
+    # nodeTyp: newOrderedTable[NodeId, PType](),
+    # nodeInt: newOrderedTable[NodeId, BiggestInt](),
+    # nodeFlt: newOrderedTable[NodeId, BiggestFloat](),
+    # nodeStr: newOrderedTable[NodeId, string](),
+    # nodeRpt: newOrderedTable[NodeId, ReportId]()
   )
 
 func isBad*(n: PNode): bool {.inline, deprecated: "for debugging".} =
-  return n.id != nilNodeId and n.state == nil
+  return n.id != nilNodeId
 func isNilOrBad*(n: PNode): bool {.inline, deprecated: "for debugging".} =
-  return n.id != nilNodeId and n.state == nil or n.isNil
+  return n.id != nilNodeId
 
 proc nextNodeId*(s: State): NodeId {.inline.} =
   NodeId state.nodeList.len + 1
@@ -1202,58 +1202,62 @@ func idx*(n: PNode): int {.inline.} = n.id.idx
 
 func id*(n: PNode): NodeId {.inline.} = n.id
 
-func kind*(n: PNode): TNodeKind =
-  n.state.nodeList[n.idx].kind
+proc kind*(n: PNode): TNodeKind =
+  {.cast(noSideEffect).}:
+    state.nodeList[n.idx].kind
 
 proc typ*(n: PNode): PType {.inline.} =
-  n.state.nodeTyp.getOrDefault(n.id)
+  state.nodeTyp.getOrDefault(n.id)
 proc `typ=`*(n: PNode, t: PType) {.inline.} =
-  n.state.nodeTyp[n.id] = t
+  state.nodeTyp[n.id] = t
 
-func info*(n: PNode): var TLineInfo {.inline.} =
-  n.state.nodeInf[n.idx]
+proc info*(n: PNode): var TLineInfo {.inline.} =
+  {.cast(noSideEffect).}:
+    return state.nodeInf[n.idx]
 proc `info=`*(n: PNode, info: TLineInfo) {.inline.} =
-  n.state.nodeInf[n.idx] = info
+  state.nodeInf[n.idx] = info
 
 proc flags*(n: PNode): var TNodeFlags {.inline.} =
-  n.state.nodeFlag[n.idx]
+  state.nodeFlag[n.idx]
 proc `flags=`*(n: PNode, flags: TNodeFlags) {.inline.} =
-  n.state.nodeFlag[n.idx] = flags
+  state.nodeFlag[n.idx] = flags
 
-func intVal*(n: PNode): var BiggestInt {.inline.} =
+proc intVal*(n: PNode): var BiggestInt {.inline.} =
   assert n.kind in {nkCharLit..nkUInt64Lit}, "not an integer, id: " & $n.id
-  n.state.nodeInt[n.id]
+  {.cast(noSideEffect).}:
+    state.nodeInt[n.id]
 proc `intVal=`*(n: PNode, v: BiggestInt) {.inline.} =
   assert n.kind in {nkCharLit..nkUInt64Lit}, "not an integer, id: " & $n.id
-  n.state.nodeInt[n.id] = v
+  state.nodeInt[n.id] = v
 
-func floatVal*(n: PNode): BiggestFloat {.inline.} =
+proc floatVal*(n: PNode): BiggestFloat {.inline.} =
   assert n.kind in {nkFloatLit..nkFloat128Lit}, "not a float, id: " & $n.id
-  n.state.nodeFlt[n.id]
+  state.nodeFlt[n.id]
 proc `floatVal=`*(n: PNode, v: BiggestFloat) {.inline.} =
   assert n.kind in {nkFloatLit..nkFloat128Lit}, "not a float, id: " & $n.id
-  n.state.nodeFlt[n.id] = v
+  state.nodeFlt[n.id] = v
 
-func strVal*(n: PNode): var string {.inline.} =
+proc strVal*(n: PNode): var string {.inline.} =
   assert n.kind in {nkStrLit..nkTripleStrLit}, "not a string, id: " & $n.id
-  n.state.nodeStr[n.id]
+  {.cast(noSideEffect).}:
+    state.nodeStr[n.id]
 proc `strVal=`*(n: PNode, v: string) {.inline.} =
   assert n.kind in {nkStrLit..nkTripleStrLit}, "not a string, id: " & $n.id
-  n.state.nodeStr[n.id] = v
+  state.nodeStr[n.id] = v
 
-func sym*(n: PNode): PSym {.inline.} =
-  assert n.kind == nkSym, "not a symbol, id: " & $n.id
-  n.state.nodeSym[n.id]
+proc sym*(n: PNode): PSym {.inline.} =
+  assert n.kind == nkSym, "not a symbol, id: " & $n.id & " and kind: " & $n.kind
+  state.nodeSym[n.id]
 proc `sym=`*(n: PNode, sym: PSym) {.inline.} =
   assert n.kind == nkSym, "not a symbol, id: " & $n.id
-  n.state.nodeSym[n.id] = sym
+  state.nodeSym[n.id] = sym
 
-func ident*(n: PNode): PIdent {.inline.} =
+proc ident*(n: PNode): PIdent {.inline.} =
   assert n.kind == nkIdent, "not an ident, id: " & $n.id
-  n.state.nodeIdt[n.id]
+  state.nodeIdt[n.id]
 proc `ident=`*(n: PNode, ident: PIdent) {.inline.} =
   assert n.kind == nkIdent, "not an ident, id: " & $n.id
-  n.state.nodeIdt[n.id] = ident
+  state.nodeIdt[n.id] = ident
 
 const haveNoSons = {
     nkCharLit..nkUInt64Lit,
@@ -1265,28 +1269,29 @@ const haveNoSons = {
 
 template sons*(n: PNode): var TNodeSeq =
   assert n.kind notin haveNoSons, "not a parent, id: " & $n.id
-  assert n.id.int <= n.state.nodeList.len, "invalid node id: " & $n.id.int
-  # if n.state == nil:
-  #   debugEcho "broken node: ", n.id.int
-  n.state.astData.mgetOrPut(n.id, @[])
+  {.cast(noSideEffect).}:
+    assert n.id.int <= state.nodeList.len, "invalid node id: " & $n.id.int
+    # if state == nil:
+    #   debugEcho "broken node: ", n.id.int
+    state.astData.mgetOrPut(n.id, @[])
 proc `sons=`*(n: PNode, sons: TNodeSeq) {.inline.} =
-  assert n.idx < state.nodeList.len
-  assert n.id.int <= n.state.nodeList.len, "invalid node id: " & $n.id.int
-  n.state.astData[n.id] = sons
+  assert state != nil, "node has nil state, id: " & $n.id.int
+  assert n.id.int <= state.nodeList.len, "invalid node id: " & $n.id.int
+  state.astData[n.id] = sons
 
 proc reportId*(n: PNode): var ReportId {.inline.} =
-  n.state.nodeRpt[n.id]
+  state.nodeRpt[n.id]
 proc `reportId=`*(n: PNode, id: ReportId) {.inline.} =
-  n.state.nodeRpt[n.id] = id
+  state.nodeRpt[n.id] = id
 
 proc idToNode*(id: NodeId): PNode {.inline.} =
   assert id.int <= state.nodeList.len, "invalid node id: " & $id.int
   case id
   of nilNodeId: nilPNode
-  else: PNode(id: id, state: state)
+  else: PNode(id: id)
 
 proc validateProcLike*(n: PNode) {.inline, deprecated: "only for debugging".} =
-  if not n.state.astData[n.id].len >= 7:
+  if not state.astData[n.id].len >= 7:
     echo "invalid proc like node, id: ", n.id
 
 #------------------------------------------------------------------------------
