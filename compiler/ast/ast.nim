@@ -341,7 +341,13 @@ proc addAllowNil*(father, son: Indexable) {.inline.} =
   father.sons.add(son)
 
 template `[]`*(n: Indexable, i: int): Indexable = n.sons[i]
-template `[]=`*(n: Indexable, i: int; x: Indexable) = n.sons[i] = x
+template `[]=`*(n: Indexable, i: int; x: Indexable) =
+  when n is PNode:
+    var tmp = state.astData[n.id]
+    tmp[i] = x
+    state.astData[n.id] = tmp
+  else:
+    n.sons[i] = x
 
 template `[]`*(n: Indexable, i: BackwardsIndex): Indexable = n[n.len - i.int]
 template `[]=`*(n: Indexable, i: BackwardsIndex; x: Indexable) = n[n.len - i.int] = x
@@ -378,7 +384,7 @@ proc getDeclPragma*(n: PNode): PNode =
     assert result.kind == nkPragma, $(result.kind, n.kind)
 
 when defined(useNodeIds):
-  const nodeIdToDebug* = NodeId 1821 # 2322968
+  const nodeIdToDebug* = NodeId -1 # 2322968
 
 template newNodeImpl(kind: TNodeKind, info2: TLineInfo) =
   # result = PNode(kind: kind, info: info2)

@@ -2145,19 +2145,8 @@ proc semProcAux(c: PContext, n: PNode, kind: TSymKind,
         if s.kind notin {skMacro, skTemplate} and s.magic == mNone: paramsTypeCheck(c, s.typ)
 
         maybeAddResult(c, s, n)
-        # if s.name != nil and s.name.s == "ze":
-        #   debug s.ast
         # semantic checking also needed with importc in case used in VM
-        s.ast[bodyPos] = 
-          block:
-            var foo = hloBody(c,
-              semProcBody(c, 
-                        n[bodyPos]
-              )
-            )
-            echo "from id: ", n[bodyPos].id
-            echo "to id: ", foo.id
-            foo
+        s.ast[bodyPos] = hloBody(c, semProcBody(c, n[bodyPos]))
 
         # unfortunately we cannot skip this step when in 'system.compiles'
         # context as it may even be evaluated in 'system.compiles':

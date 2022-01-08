@@ -1855,10 +1855,13 @@ proc getNullValue(typ: PType, info: TLineInfo; conf: ConfigRef): PNode =
   case t.kind
   of tyBool, tyEnum, tyChar, tyInt..tyInt64:
     result = newNodeIT(nkIntLit, info, t)
+    result.intVal = 0
   of tyUInt..tyUInt64:
     result = newNodeIT(nkUIntLit, info, t)
+    result.intVal = 0
   of tyFloat..tyFloat128:
     result = newNodeIT(nkFloatLit, info, t)
+    result.floatVal = 0
   of tyCstring, tyString:
     result = newNodeIT(nkStrLit, info, t)
     result.strVal = ""
