@@ -836,12 +836,11 @@ type
   NodeData* = object
     ## bare minimum data we need to know about every node
     kind*: TNodeKind    ## presently the same as the nim node
-    extra: ExtraDataId  ## id into extra data about this node, depends on
+    extra*: ExtraDataId  ## id into extra data about this node, depends on
                         ## `kind`, for lookup of literal, sym, ident, etc
 
   AstTree* = OrderedTable[NodeId, TNodeSeq]
     ## store the tree structure for nodes, this is effectively `sons`
-    ## xxx: in here or separately we'll need to account for modules & fragments
 
   # ExtraData = object
   #   case kind: ExtraDataKind
@@ -1235,23 +1234,23 @@ func idx*(n: NodeId): int {.inline.} =
 func idx*(n: PNode): int {.inline.} = n.id.idx
   ## internal PNode to node index
 
-proc extraId(n: PNode): ExtraDataId {.inline.} =
+proc extraId*(n: PNode): ExtraDataId {.inline.} =
   ## quick access to the ExtraDataId for a node
   state.nodeList[n.idx].extra
 
-func idx(e: ExtraDataId): int {.inline.} =
+func idx*(e: ExtraDataId): int {.inline.} =
   ## internal ExtraDataId to node extra data index
   assert e != nilExtraDataId, "attempting to get an idx of a nil extra data id"
   e.int - 1
 
-proc extraIdx(n: PNode): int {.inline.} = n.extraId.idx
+proc extraIdx*(n: PNode): int {.inline.} = n.extraId.idx
   ## quick access to the extra data index for a node
 
 func id*(n: PNode): NodeId {.inline.} = n.id
 
 proc kind*(n: PNode): TNodeKind =
   {.cast(noSideEffect).}:
-    state.nodeList[n.idx].kind
+    result = state.nodeList[n.idx].kind
 
 proc typ*(n: PNode): PType {.inline.} =
   state.nodeTyp.getOrDefault(n.id)
@@ -1260,7 +1259,7 @@ proc `typ=`*(n: PNode, t: PType) {.inline.} =
 
 proc info*(n: PNode): var TLineInfo {.inline.} =
   {.cast(noSideEffect).}:
-    return state.nodeInf[n.idx]
+    result = state.nodeInf[n.idx]
 proc `info=`*(n: PNode, info: TLineInfo) {.inline.} =
   state.nodeInf[n.idx] = info
 
@@ -1269,17 +1268,21 @@ proc flags*(n: PNode): var TNodeFlags {.inline.} =
 proc `flags=`*(n: PNode, flags: TNodeFlags) {.inline.} =
   state.nodeFlag[n.idx] = flags
 
-proc intVal*(n: PNode): BiggestInt {.inline.} =
+proc intVal*(n: PNode): var BiggestInt {.inline.} =
   # assert n.kind in {nkCharLit..nkUInt64Lit}, "not an integer, id: " & $n.id
   {.cast(noSideEffect).}:
-    state.nodeInt[n.extraIdx]
+    result = state.nodeInt[n.extraIdx]
 proc `intVal=`*(n: PNode, v: BiggestInt) {.inline.} =
   # assert n.kind in {nkCharLit..nkUInt64Lit}, "not an integer, id: " & $n.id
-  state.nodeInt[n.extraId.idx] = v
+  if n.extraId == nilExtraDataId:
+    state.nodeList[n.idx].extra = ExtraDataId state.nodeInt.len
+    state.nodeInt.add v
+  else:
+    state.nodeInt[n.extraId.idx] = v
 
-proc floatVal*(n: PNode): BiggestFloat {.inline.} =
+proc floatVal*(n: PNode): var BiggestFloat {.inline.} =
   # assert n.kind in {nkFloatLit..nkFloat128Lit}, "not a float, id: " & $n.id
-  state.nodeFlt[n.extraId.idx]
+  result = state.nodeFlt[n.extraId.idx]
 proc `floatVal=`*(n: PNode, v: BiggestFloat) {.inline.} =
   # assert n.kind in {nkFloatLit..nkFloat128Lit}, "not a float, id: " & $n.id
   state.nodeFlt[n.extraId.idx] = v
@@ -1287,24 +1290,36 @@ proc `floatVal=`*(n: PNode, v: BiggestFloat) {.inline.} =
 proc strVal*(n: PNode): var string {.inline.} =
   # assert n.kind in {nkStrLit..nkTripleStrLit}, "not a string, id: " & $n.id
   {.cast(noSideEffect).}:
-    state.nodeStr[n.extraId.idx]
+    result = state.nodeStr[n.extraId.idx]
 proc `strVal=`*(n: PNode, v: string) {.inline.} =
   # assert n.kind in {nkStrLit..nkTripleStrLit}, "not a string, id: " & $n.id
-  state.nodeStr[n.extraId.idx] = v
+  if n.extraId == nilExtraDataId:
+    state.nodeList[n.idx].extra = ExtraDataId state.nodeStr.len
+    state.nodeStr.add v
+  else:
+    state.nodeStr[n.extraId.idx] = v
 
 proc sym*(n: PNode): PSym {.inline.} =
   # assert n.kind == nkSym, "not a symbol, id: " & $n.id & " and kind: " & $n.kind
   state.nodeSym[n.extraId.idx]
 proc `sym=`*(n: PNode, sym: PSym) {.inline.} =
   # assert n.kind == nkSym, "not a symbol, id: " & $n.id
-  state.nodeSym[n.extraId.idx] = sym
+  if n.extraId == nilExtraDataId:
+    state.nodeList[n.idx].extra = ExtraDataId state.nodeSym.len
+    state.nodeSym.add sym
+  else:
+    state.nodeSym[n.extraId.idx] = sym
 
 proc ident*(n: PNode): PIdent {.inline.} =
-  # assert n.kind == nkIdent, "not an ident, id: " & $n.id
+  assert n.kind == nkIdent, "not an ident, id: " & $n.id
   state.nodeIdt[n.extraId.idx]
 proc `ident=`*(n: PNode, ident: PIdent) {.inline.} =
-  # assert n.kind == nkIdent, "not an ident, id: " & $n.id
-  state.nodeIdt[n.extraId.idx] = ident
+  assert n.kind == nkIdent, "not an ident, id: " & $n.id
+  if n.extraId == nilExtraDataId:
+    state.nodeList[n.idx].extra = ExtraDataId state.nodeIdt.len
+    state.nodeIdt.add ident
+  else:
+    state.nodeIdt[n.extraId.idx] = ident
 
 # const haveNoSons = {
 #     nkCharLit..nkUInt64Lit,
@@ -1314,12 +1329,12 @@ proc `ident=`*(n: PNode, ident: PIdent) {.inline.} =
 #     nkIdent
 #   }
 
-template sons*(n: PNode): var TNodeSeq =
+proc sons*(n: PNode): var TNodeSeq {.inline.} =
   # assert n.kind notin haveNoSons, "not a parent, id: " & $n.id
   {.cast(noSideEffect).}:
     # assert n.id.int <= state.nodeList.len, "invalid node id: " & $n.id.int
-    state.astData.mgetOrPut(n.id, @[])
-template `sons=`*(n: PNode, sons: TNodeSeq) =
+    result = state.astData.mgetOrPut(n.id, @[])
+proc `sons=`*(n: PNode, sons: TNodeSeq) =
   # assert n.kind notin haveNoSons, "not a parent, id: " & $n.id
   # assert n.id.int <= state.nodeList.len, "invalid node id: " & $n.id.int
   state.astData[n.id] = sons

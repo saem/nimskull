@@ -392,10 +392,31 @@ when defined(useNodeIds):
 
 template newNodeImpl(kind: TNodeKind, info2: TLineInfo) =
   # result = PNode(kind: kind, info: info2)
-  let nodeId = state.nextNodeId()
+  let
+    nodeId = state.nextNodeId()
+    nodeIdx = nodeId.idx
   state.nodeList.add NodeData(kind: kind)
   state.nodeInf.add info2
   state.nodeFlag.add {}
+  case extraDataKind(kind):
+  of ExtraDataInt:
+    state.nodeList[nodeIdx].extra = ExtraDataId state.nodeInt.len
+    state.nodeInt.add 0
+  of ExtraDataFloat:
+    state.nodeList[nodeIdx].extra = ExtraDataId state.nodeFlt.len
+    state.nodeFlt.add 0
+  of ExtraDataString:
+    state.nodeList[nodeIdx].extra = ExtraDataId state.nodeStr.len
+    state.nodeStr.add ""
+  of ExtraDataSymbol:
+    state.nodeList[nodeIdx].extra = ExtraDataId state.nodeSym.len
+    state.nodeSym.add nil
+  of ExtraDataIdentifier:
+    state.nodeList[nodeIdx].extra = ExtraDataId state.nodeIdt.len
+    state.nodeIdt.add nil
+  of ExtraDataNone:
+    discard
+
   result = PNode(id: nodeId)
 
 template checkNodeIdForDebug() =
