@@ -839,29 +839,13 @@ type
     extra*: ExtraDataId  ## id into extra data about this node, depends on
                         ## `kind`, for lookup of literal, sym, ident, etc
 
-  AstTree* = OrderedTable[NodeId, TNodeSeq]
-    ## store the tree structure for nodes, this is effectively `sons`
-
-  # ExtraData = object
-  #   case kind: ExtraDataKind
-  #   of IntLiteralKind:
-  #     intVal: BiggestInt
-  #   of FloatLiteralKind:
-  #     floatVal: BiggestFloat
-  #   of StringLiteralKind:
-  #     strVal: string
-  #   of SymbolDataKind:
-  #     sym: PSym
-  #   of IdentifierDataKind:
-  #     ident: PIdent
-
   State* = ref object
     nodeList*: NodeList        ## each node, NodeId is their sequence index
     nodeFlag*: seq[TNodeFlags] ## flags for each node, rarely accessed bloat
 
     nodeInf*: seq[TLineInfo]   ## info on a per node basis
 
-    astData*: AstTree          ## actual tree structure for the various AST
+    # astData*: AstTree          ## actual tree structure for the various AST
 
     # sparse data, not all nodes have these
     nodeTyp*: OrderedTable[NodeId, PType]    ## types
@@ -873,20 +857,16 @@ type
     nodeInt*: seq[BiggestInt]   ## int literals
     nodeFlt*: seq[BiggestFloat] ## float literals
     nodeStr*: seq[string]       ## string literals
+    astData*: seq[TNodeSeq]     ## the sons for ast nodes
 
-    # nodeSym*: OrderedTable[NodeId, PSym]         ## symbols
-    # nodeIdt*: OrderedTable[NodeId, PIdent]       ## identifiers
-    # nodeInt*: OrderedTable[NodeId, BiggestInt]   ## int literals
-    # nodeFlt*: OrderedTable[NodeId, BiggestFloat] ## float literals
-    # nodeStr*: OrderedTable[NodeId, string]       ## string literals
-  
   ExtraDataKind* {.pure.} = enum
     ExtraDataNone,
     ExtraDataInt,
     ExtraDataFloat,
     ExtraDataString,
     ExtraDataSymbol,
-    ExtraDataIdentifier
+    ExtraDataIdentifier,
+    ExtraDataAst
 
   # IDs
   # xxx: disabled distincts until the basics work
@@ -1197,7 +1177,7 @@ func extraDataKind*(k: TNodeKind): ExtraDataKind {.inline.} =
   of nkStrLit..nkTripleStrLit:  ExtraDataString
   of nkSym:                     ExtraDataSymbol
   of nkIdent:                   ExtraDataIdentifier
-  else:                         ExtraDataNone
+  else:                         ExtraDataAst
 
 const
   # unknownLineInfoId = InfoId 0
@@ -1331,11 +1311,14 @@ proc sons*(n: PNode): var TNodeSeq {.inline.} =
   # assert n.kind notin haveNoSons, "not a parent, id: " & $n.id
   {.cast(noSideEffect).}:
     # assert n.id.int <= state.nodeList.len, "invalid node id: " & $n.id.int
-    result = state.astData.mgetOrPut(n.id, @[])
+    if n.extraId == nilExtraDataId:
+      state.astData.add @[]
+      state.nodeList[n.idx].extra = ExtraDataId state.astData.len
+    result = state.astData[n.extraId.idx]
 proc `sons=`*(n: PNode, sons: TNodeSeq) =
   # assert n.kind notin haveNoSons, "not a parent, id: " & $n.id
   # assert n.id.int <= state.nodeList.len, "invalid node id: " & $n.id.int
-  state.astData[n.id] = sons
+  state.astData[n.extraIdx] = sons
 
 proc reportId*(n: PNode): var ReportId {.inline.} =
   state.nodeRpt[n.id]

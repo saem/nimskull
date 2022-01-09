@@ -343,12 +343,7 @@ proc add*(father, son: Indexable) {.inline.} =
 
 template `[]`*(n: Indexable, i: int): Indexable = n.sons[i]
 template `[]=`*(n: Indexable, i: int; x: Indexable) =
-  when n is PNode:
-    var tmp = state.astData[n.id]
-    tmp[i] = x
-    state.astData[n.id] = tmp
-  else:
-    n.sons[i] = x
+  n.sons[i] = x
 
 template `[]`*(n: Indexable, i: BackwardsIndex): Indexable = n[n.len - i.int]
 template `[]=`*(n: Indexable, i: BackwardsIndex; x: Indexable) = n[n.len - i.int] = x
@@ -411,7 +406,9 @@ template newNodeImpl(kind: TNodeKind, info2: TLineInfo) =
   of ExtraDataIdentifier:
     state.nodeIdt.add nil
     state.nodeList[nodeIdx].extra = ExtraDataId state.nodeIdt.len
-  of ExtraDataNone:
+  of ExtraDataAst, ExtraDataNone:
+    state.astData.add @[]
+    state.nodeList[nodeIdx].extra = ExtraDataId state.astData.len
     discard
 
   result = PNode(id: nodeId)
@@ -839,8 +836,6 @@ proc applyToNode*(src, dest: PNode) =
   # assert not dest.isNil
   # assert not src.isNil
   # assert dest.id != src.id, "applying to self, id: " & $src.id
-  if state.astData.hasKey(src.id):
-    state.astData[dest.id] = state.astData[src.id]
   state.nodeList[dest.idx] = state.nodeList[src.idx]
   state.nodeFlag[dest.idx] = state.nodeFlag[src.idx]
   state.nodeInf[dest.idx] = state.nodeInf[src.idx]
@@ -859,8 +854,8 @@ proc applyToNode*(src, dest: PNode) =
     dest.sym = src.sym
   of ExtraDataIdentifier:
     dest.ident = src.ident
-  of ExtraDataNone:
-    discard
+  of ExtraDataAst, ExtraDataNone:
+    dest.sons = src.sons
 
 proc copyNode*(src: PNode): PNode =
   # does not copy its sons!
@@ -932,7 +927,9 @@ template transitionNodeKindCommon(k, old: TNodeKind) =
 
   for clear in clears.items:
     case clear
-    of nodeClearAst: discard # state.astData.del(n.id)
+    of nodeClearAst:
+      if oldExtraDataKind == ExtraDataAst:
+        state.astData[n.extraIdx].setLen(0)
     of nodeClearFlg: state.nodeFlag[n.idx] = {}
     of nodeClearInf: state.nodeInf[n.idx] = unknownLineInfo
     of nodeClearTyp: state.nodeTyp.del(n.id)
