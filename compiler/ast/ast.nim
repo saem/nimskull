@@ -932,7 +932,7 @@ template transitionNodeKindCommon(k, old: TNodeKind) =
 
   for clear in clears.items:
     case clear
-    of nodeClearAst: state.astData.del(n.id)
+    of nodeClearAst: discard # state.astData.del(n.id)
     of nodeClearFlg: state.nodeFlag[n.idx] = {}
     of nodeClearInf: state.nodeInf[n.idx] = unknownLineInfo
     of nodeClearTyp: state.nodeTyp.del(n.id)
