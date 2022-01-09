@@ -776,6 +776,7 @@ proc myProcess(context: PPassContext, n: PNode): PNode {.nosinks.} =
   ## from a module as it's parsed and uses the context to accumulate data.
   var c = PContext(context)
   # no need for an expensive 'try' if we stop after the first error anyway:
+  echo "processing: ", c.config.`$`(n.info)
   if c.config.errorMax <= 1:
     result = semStmtAndGenerateGenerics(c, n)
   else:

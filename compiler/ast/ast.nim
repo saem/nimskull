@@ -317,10 +317,14 @@ proc isCallExpr*(n: PNode): bool =
 
 proc discardSons*(father: PNode)
 
-type Indexable = PNode | PType
-
-proc len*(n: Indexable): int {.inline.} =
+proc len*(n: PType): int {.inline.} =
   result = n.sons.len
+
+proc len*(n: PNode): int {.inline.} =
+  ## number of children, unsafe if called on leaf nodes, see `safeLen`
+  result = state.astData[n.id].len
+
+type Indexable = PNode | PType
 
 proc safeLen*(n: PNode): int {.inline.} =
   ## works even for leaves.
@@ -333,12 +337,12 @@ proc safeArrLen*(n: PNode): int {.inline.} =
   elif n.kind in {nkNone..nkFloat128Lit}: result = 0
   else: result = n.len
 
-proc add*(father, son: Indexable) =
-  assert son != nil
-  father.sons.add(son)
-
 proc addAllowNil*(father, son: Indexable) {.inline.} =
   father.sons.add(son)
+
+proc add*(father, son: Indexable) {.inline.} =
+  assert son != nil
+  addAllowNil(father, son)
 
 template `[]`*(n: Indexable, i: int): Indexable = n.sons[i]
 template `[]=`*(n: Indexable, i: int; x: Indexable) =
@@ -414,7 +418,7 @@ proc newNodeI*(kind: TNodeKind, info: TLineInfo, children: int): PNode =
   ## new node with line info, type, and children
   newNodeImpl(kind, info)
   if children > 0:
-    newSeq(result.sons, children)
+    result.sons = newSeq[PNode](children)
   checkNodeIdForDebug()
 
 proc newNodeIT*(kind: TNodeKind, info: TLineInfo, typ: PType): PNode =
@@ -822,20 +826,23 @@ proc applyToNode*(src, dest: PNode) =
   state.nodeList[dest.idx] = state.nodeList[src.idx]
   state.nodeFlag[dest.idx] = state.nodeFlag[src.idx]
   state.nodeInf[dest.idx] = state.nodeInf[src.idx]
-  if state.nodeSym.hasKey(src.id):
-    state.nodeSym[dest.id] = state.nodeSym[src.id]
-  if state.nodeIdt.hasKey(src.id):
-    state.nodeIdt[dest.id] = state.nodeIdt[src.id]
   if state.nodeTyp.hasKey(src.id):
     state.nodeTyp[dest.id] = state.nodeTyp[src.id]
-  if state.nodeInt.hasKey(src.id):
-    state.nodeInt[dest.id] = state.nodeInt[src.id]
-  if state.nodeFlt.hasKey(src.id):
-    state.nodeFlt[dest.id] = state.nodeFlt[src.id]
-  if state.nodeStr.hasKey(src.id):
-    state.nodeStr[dest.id] = state.nodeStr[src.id]
   if state.nodeRpt.hasKey(src.id):
     state.nodeRpt[dest.id] = state.nodeRpt[src.id]
+  case src.kind.extraDataKind
+  of ExtraDataInt:
+    dest.sym = src.sym
+  of ExtraDataFloat:
+    dest.floatVal = src.floatVal
+  of ExtraDataString:
+    dest.strVal = src.strVal
+  of ExtraDataSymbol:
+    dest.sym = src.sym
+  of ExtraDataIdentifier:
+    dest.ident = src.ident
+  of ExtraDataNone:
+    discard
 
 proc copyNode*(src: PNode): PNode =
   # does not copy its sons!
@@ -871,9 +878,26 @@ type
     nodeClearRpt,
     nodeClearCmt
 
-template transitionNodeKindCommon(k: TNodeKind) =
+func determineNodeDataToClear(k: TNodeKind): set[NodeDataToClear] {.inline.} =
+  case k
+  of nkCharLit..nkUInt64Lit:
+    {nodeClearAst, nodeClearSym, nodeClearIdt, nodeClearFlt, nodeClearStr, nodeClearRpt}
+  of nkFloatLit..nkFloat128Lit:
+    {nodeClearAst, nodeClearSym, nodeClearIdt, nodeClearInt, nodeClearStr, nodeClearRpt}
+  of nkStrLit..nkTripleStrLit:
+    {nodeClearAst, nodeClearSym, nodeClearIdt, nodeClearInt, nodeClearFlt, nodeClearRpt}
+  of nkSym:
+    {nodeClearAst, nodeClearIdt, nodeClearInt, nodeClearFlt, nodeClearStr, nodeClearRpt}
+  of nkIdent:
+    {nodeClearAst, nodeClearSym, nodeClearInt, nodeClearFlt, nodeClearStr, nodeClearRpt}
+  of nkError:
+    {nodeClearIdt, nodeClearSym, nodeClearInt, nodeClearFlt, nodeClearStr}
+  else:
+    {nodeClearIdt, nodeClearSym, nodeClearInt, nodeClearFlt, nodeClearStr, nodeClearRpt}
+    # xxx: this should handle empty and other special cases
+
+template transitionNodeKindCommon(k, old: TNodeKind) =
   # xxx: this used to be a memory copy, but now we just change the kind
-  # xxx: this template used to not change the address, now it does
   # xxx: trace the transition for lineage information
 
   state.nodeList[n.idx].kind = k
@@ -881,53 +905,59 @@ template transitionNodeKindCommon(k: TNodeKind) =
   # clear old data: this was added as part of the data oriented design
   #                 refactor; might be a source of bugs wrt to how legacy code
   #                 expects things to work, try to favour fixing legacy code
-  let clears =
-    case k
-    of nkCharLit..nkUInt64Lit:
-      {nodeClearAst, nodeClearSym, nodeClearIdt, nodeClearFlt, nodeClearStr, nodeClearRpt}
-    of nkFloatLit..nkFloat128Lit:
-      {nodeClearAst, nodeClearSym, nodeClearIdt, nodeClearInt, nodeClearStr, nodeClearRpt}
-    of nkStrLit..nkTripleStrLit:
-      {nodeClearAst, nodeClearSym, nodeClearIdt, nodeClearInt, nodeClearFlt, nodeClearRpt}
-    of nkSym:
-      {nodeClearAst, nodeClearIdt, nodeClearInt, nodeClearFlt, nodeClearStr, nodeClearRpt}
-    of nkIdent:
-      {nodeClearAst, nodeClearSym, nodeClearInt, nodeClearFlt, nodeClearStr, nodeClearRpt}
-    of nkError:
-      {nodeClearIdt, nodeClearSym, nodeClearInt, nodeClearFlt, nodeClearStr}
-    else:
-      {nodeClearIdt, nodeClearSym, nodeClearInt, nodeClearFlt, nodeClearStr, nodeClearRpt}
-  
+  let
+    clearsK = determineNodeDataToClear(k)
+    clearsOld = determineNodeDataToClear(old)
+    sameNodeVariety = clearsK == clearsOld    ## kinds need equivalent storage
+    clears =
+      if sameNodeVariety: {}    # don't clear if the same
+      else: clearsK
+    oldExtraDataKind = extraDataKind(old)
+    resetExtraDataId = clears != {} and oldExtraDataKind != ExtraDataNone
+
   for clear in clears.items:
     case clear
     of nodeClearAst: state.astData.del(n.id)
     of nodeClearFlg: state.nodeFlag[n.idx] = {}
     of nodeClearInf: state.nodeInf[n.idx] = unknownLineInfo
-    of nodeClearSym: state.nodeSym.del(n.id)
-    of nodeClearIdt: state.nodeIdt.del(n.id)
     of nodeClearTyp: state.nodeTyp.del(n.id)
-    of nodeClearInt: state.nodeInt.del(n.id)
-    of nodeClearFlt: state.nodeFlt.del(n.id)
-    of nodeClearStr: state.nodeStr.del(n.id)
     of nodeClearRpt: state.nodeRpt.del(n.id)
+    of nodeClearSym:
+      if oldExtraDataKind == ExtraDataSymbol:
+        state.nodeSym[n.extraId.idx] = nil
+    of nodeClearIdt:
+      if oldExtraDataKind == ExtraDataIdentifier:
+        state.nodeIdt[n.extraId.idx] = nil
+    of nodeClearInt:
+      if oldExtraDataKind == ExtraDataInt:
+        state.nodeInt[n.extraId.idx] = 0
+    of nodeClearFlt:
+      if oldExtraDataKind == ExtraDataFloat:
+        state.nodeFlt[n.extraId.idx] = 0.0
+    of nodeClearStr:
+      if oldExtraDataKind == ExtraDataString:
+        state.nodeStr[n.extraId.idx] = ""
     of nodeClearCmt: gconfig.comments.del(n.id)
+  
+  if resetExtraDataId:
+    state.nodeList[n.idx].extra = nilExtraDataId
 
 proc transitionSonsKind*(n: PNode, kind: range[nkComesFrom..nkTupleConstr]) =
   # xxx: just change the kind now, might need clearing/validation here
-  transitionNodeKindCommon(kind)
+  transitionNodeKindCommon(kind, n.kind)
 
 proc transitionIntKind*(n: PNode, kind: range[nkCharLit..nkUInt64Lit]) =
   # xxx: just change the kind now, might need clearing/validation here
-  transitionNodeKindCommon(kind)
+  transitionNodeKindCommon(kind, n.kind)
 
 proc transitionToNilLit*(n: PNode) =
   ## used to reset a node to a nil literal
-  transitionNodeKindCommon(nkNilLit)
+  transitionNodeKindCommon(nkNilLit, n.kind)
 
 proc transitionNoneToSym*(n: PNode) =
   # xxx: just change the kind now, might need clearing/validation here
   #      see the hack in `semtypes.semTypeIdent`
-  transitionNodeKindCommon(nkSym)
+  transitionNodeKindCommon(nkSym, n.kind)
 
 template transitionSymKindCommon*(k: TSymKind) =
   let obj {.inject.} = s[]
