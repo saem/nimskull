@@ -317,14 +317,11 @@ proc isCallExpr*(n: PNode): bool =
 
 proc discardSons*(father: PNode)
 
-proc len*(n: PType): int {.inline.} =
-  result = n.sons.len
-
-proc len*(n: PNode): int {.inline.} =
-  ## number of children, unsafe if called on leaf nodes, see `safeLen`
-  result = state.astData[n.id].len
-
 type Indexable = PNode | PType
+
+proc len*(n: Indexable): int {.inline.} =
+  ## number of children, unsafe if called on leaf nodes, see `safeLen`
+  result = n.sons.len
 
 proc safeLen*(n: PNode): int {.inline.} =
   ## works even for leaves.
@@ -400,20 +397,20 @@ template newNodeImpl(kind: TNodeKind, info2: TLineInfo) =
   state.nodeFlag.add {}
   case extraDataKind(kind):
   of ExtraDataInt:
-    state.nodeList[nodeIdx].extra = ExtraDataId state.nodeInt.len
     state.nodeInt.add 0
+    state.nodeList[nodeIdx].extra = ExtraDataId state.nodeInt.len
   of ExtraDataFloat:
-    state.nodeList[nodeIdx].extra = ExtraDataId state.nodeFlt.len
     state.nodeFlt.add 0
+    state.nodeList[nodeIdx].extra = ExtraDataId state.nodeFlt.len
   of ExtraDataString:
-    state.nodeList[nodeIdx].extra = ExtraDataId state.nodeStr.len
     state.nodeStr.add ""
+    state.nodeList[nodeIdx].extra = ExtraDataId state.nodeStr.len
   of ExtraDataSymbol:
-    state.nodeList[nodeIdx].extra = ExtraDataId state.nodeSym.len
     state.nodeSym.add nil
+    state.nodeList[nodeIdx].extra = ExtraDataId state.nodeSym.len
   of ExtraDataIdentifier:
-    state.nodeList[nodeIdx].extra = ExtraDataId state.nodeIdt.len
     state.nodeIdt.add nil
+    state.nodeList[nodeIdx].extra = ExtraDataId state.nodeIdt.len
   of ExtraDataNone:
     discard
 
@@ -439,7 +436,7 @@ proc newNodeI*(kind: TNodeKind, info: TLineInfo, children: int): PNode =
   ## new node with line info, type, and children
   newNodeImpl(kind, info)
   if children > 0:
-    result.sons = newSeq[PNode](children)
+    newSeq(result.sons, children)
   checkNodeIdForDebug()
 
 proc newNodeIT*(kind: TNodeKind, info: TLineInfo, typ: PType): PNode =
@@ -839,9 +836,9 @@ proc delSon*(father: PNode, idx: int) =
 
 proc applyToNode*(src, dest: PNode) =
   ## used for the VM when we pass nodes "by value"
-  assert not dest.isNil
-  assert not src.isNil
-  assert dest.id != src.id, "applying to self, id: " & $src.id
+  # assert not dest.isNil
+  # assert not src.isNil
+  # assert dest.id != src.id, "applying to self, id: " & $src.id
   if state.astData.hasKey(src.id):
     state.astData[dest.id] = state.astData[src.id]
   state.nodeList[dest.idx] = state.nodeList[src.idx]
@@ -853,7 +850,7 @@ proc applyToNode*(src, dest: PNode) =
     state.nodeRpt[dest.id] = state.nodeRpt[src.id]
   case src.kind.extraDataKind
   of ExtraDataInt:
-    dest.sym = src.sym
+    dest.intVal = src.intVal
   of ExtraDataFloat:
     dest.floatVal = src.floatVal
   of ExtraDataString:
@@ -921,19 +918,16 @@ template transitionNodeKindCommon(k, old: TNodeKind) =
   # xxx: this used to be a memory copy, but now we just change the kind
   # xxx: trace the transition for lineage information
 
-  state.nodeList[n.idx].kind = k
-
   # clear old data: this was added as part of the data oriented design
   #                 refactor; might be a source of bugs wrt to how legacy code
   #                 expects things to work, try to favour fixing legacy code
   let
-    clearsK = determineNodeDataToClear(k)
-    clearsOld = determineNodeDataToClear(old)
-    sameNodeVariety = clearsK == clearsOld    ## kinds need equivalent storage
-    clears =
-      if sameNodeVariety: {}    # don't clear if the same
-      else: clearsK
+    kExtraDataKind = extraDataKind(k)
     oldExtraDataKind = extraDataKind(old)
+    sameNodeVariety = kExtraDataKind == oldExtraDataKind ## kinds need equivalent storage
+    clears =
+      if sameNodeVariety: {}            # don't clear if the same
+      else: determineNodeDataToClear(k)
     resetExtraDataId = clears != {} and oldExtraDataKind != ExtraDataNone
 
   for clear in clears.items:
@@ -960,8 +954,16 @@ template transitionNodeKindCommon(k, old: TNodeKind) =
         state.nodeStr[n.extraId.idx] = ""
     of nodeClearCmt: gconfig.comments.del(n.id)
   
+  state.nodeList[n.idx].kind = k
+  
+  # xxx: setup storage if we reset it
   if resetExtraDataId:
     state.nodeList[n.idx].extra = nilExtraDataId
+  
+  when defined(useNodeIds):
+    if n.id == nodeIdToDebug:
+      echo "KIND ", n.kind
+      writeStackTrace()
 
 proc transitionSonsKind*(n: PNode, kind: range[nkComesFrom..nkTupleConstr]) =
   # xxx: just change the kind now, might need clearing/validation here

@@ -1229,7 +1229,7 @@ proc nextNodeId*(s: State): NodeId {.inline.} =
 
 func idx*(n: NodeId): int {.inline.} =
   ## internal NodeId to node index
-  assert n != nilNodeId, "attempting to get an idx of a nil node"
+  # assert n != nilNodeId, "attempting to get an idx of a nil node"
   n.int - 1
 func idx*(n: PNode): int {.inline.} = n.id.idx
   ## internal PNode to node index
@@ -1237,12 +1237,10 @@ func idx*(n: PNode): int {.inline.} = n.id.idx
 proc extraId*(n: PNode): ExtraDataId {.inline.} =
   ## quick access to the ExtraDataId for a node
   state.nodeList[n.idx].extra
-
 func idx*(e: ExtraDataId): int {.inline.} =
   ## internal ExtraDataId to node extra data index
-  assert e != nilExtraDataId, "attempting to get an idx of a nil extra data id"
+  # assert e != nilExtraDataId, "attempting to get an idx of a nil extra data id"
   e.int - 1
-
 proc extraIdx*(n: PNode): int {.inline.} = n.extraId.idx
   ## quick access to the extra data index for a node
 
@@ -1275,8 +1273,8 @@ proc intVal*(n: PNode): var BiggestInt {.inline.} =
 proc `intVal=`*(n: PNode, v: BiggestInt) {.inline.} =
   # assert n.kind in {nkCharLit..nkUInt64Lit}, "not an integer, id: " & $n.id
   if n.extraId == nilExtraDataId:
-    state.nodeList[n.idx].extra = ExtraDataId state.nodeInt.len
     state.nodeInt.add v
+    state.nodeList[n.idx].extra = ExtraDataId state.nodeInt.len
   else:
     state.nodeInt[n.extraId.idx] = v
 
@@ -1294,8 +1292,8 @@ proc strVal*(n: PNode): var string {.inline.} =
 proc `strVal=`*(n: PNode, v: string) {.inline.} =
   # assert n.kind in {nkStrLit..nkTripleStrLit}, "not a string, id: " & $n.id
   if n.extraId == nilExtraDataId:
-    state.nodeList[n.idx].extra = ExtraDataId state.nodeStr.len
     state.nodeStr.add v
+    state.nodeList[n.idx].extra = ExtraDataId state.nodeStr.len
   else:
     state.nodeStr[n.extraId.idx] = v
 
@@ -1305,8 +1303,8 @@ proc sym*(n: PNode): PSym {.inline.} =
 proc `sym=`*(n: PNode, sym: PSym) {.inline.} =
   # assert n.kind == nkSym, "not a symbol, id: " & $n.id
   if n.extraId == nilExtraDataId:
-    state.nodeList[n.idx].extra = ExtraDataId state.nodeSym.len
     state.nodeSym.add sym
+    state.nodeList[n.idx].extra = ExtraDataId state.nodeSym.len
   else:
     state.nodeSym[n.extraId.idx] = sym
 
@@ -1316,18 +1314,18 @@ proc ident*(n: PNode): PIdent {.inline.} =
 proc `ident=`*(n: PNode, ident: PIdent) {.inline.} =
   assert n.kind == nkIdent, "not an ident, id: " & $n.id
   if n.extraId == nilExtraDataId:
-    state.nodeList[n.idx].extra = ExtraDataId state.nodeIdt.len
     state.nodeIdt.add ident
+    state.nodeList[n.idx].extra = ExtraDataId state.nodeIdt.len
   else:
     state.nodeIdt[n.extraId.idx] = ident
 
-# const haveNoSons = {
-#     nkCharLit..nkUInt64Lit,
-#     nkFloatLit..nkFloat128Lit,
-#     nkStrLit..nkTripleStrLit,
-#     nkSym,
-#     nkIdent
-#   }
+const haveNoSons = {
+    nkCharLit..nkUInt64Lit,
+    nkFloatLit..nkFloat128Lit,
+    nkStrLit..nkTripleStrLit,
+    nkSym,
+    nkIdent
+  }
 
 proc sons*(n: PNode): var TNodeSeq {.inline.} =
   # assert n.kind notin haveNoSons, "not a parent, id: " & $n.id
