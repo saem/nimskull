@@ -380,7 +380,7 @@ proc getDeclPragma*(n: PNode): PNode =
     assert result.kind == nkPragma, $(result.kind, n.kind)
 
 when defined(useNodeIds):
-  const nodeIdToDebug* = NodeId -1 # 2322968
+  const nodeIdToDebug* = NodeId 938146 # 2322968
 
 template newNodeImpl(kind: TNodeKind, info2: TLineInfo) =
   # result = PNode(kind: kind, info: info2)
@@ -837,6 +837,7 @@ proc applyToNode*(src, dest: PNode) =
   # assert not src.isNil
   # assert dest.id != src.id, "applying to self, id: " & $src.id
   state.nodeList[dest.idx] = state.nodeList[src.idx]
+  state.nodeList[dest.idx].extra = nilExtraDataId # will freshly copy below
   state.nodeFlag[dest.idx] = state.nodeFlag[src.idx]
   state.nodeInf[dest.idx] = state.nodeInf[src.idx]
   if state.nodeTyp.hasKey(src.id):
@@ -855,6 +856,7 @@ proc applyToNode*(src, dest: PNode) =
   of ExtraDataIdentifier:
     dest.ident = src.ident
   of ExtraDataAst, ExtraDataNone:
+    dest.initSons()
     dest.sons = src.sons
 
 proc copyNode*(src: PNode): PNode =

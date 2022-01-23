@@ -510,10 +510,7 @@ proc opConv(c: PCtx; dest: var TFullReg, src: TFullReg, desttyp, srctyp: PType):
 
 proc compile(c: PCtx, s: PSym): int =
   result = vmgen.genProc(c, s)
-  # TODO: remove this debug code
-  if `??`(c.config, s.info, "tnimnode.nim"):
-    c.codeListing(s, nilPNode, start = result)
-    
+
   when debugEchoCode:
     c.codeListing(s, nilPNode, start = result)
 
@@ -623,6 +620,7 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
           info: c.debug[pc],
           opc: instr.opcode
       )))
+      echo "nodeAddrs: ", c.nodeAddrs
       echo "globals: ", c.config.treeRepr(c.globals, indentIncrease = 2)
 
     c.profiler.enter(c, tos)
@@ -924,7 +922,7 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
         # twice.
         # TODO: This should likely be handled differently in vmgen.
         let nAddr = regs[ra].nodeAddr
-        if nAddr == nil and derefNodeAddr(c, nAddr) == nil:
+        if nAddr == nil or derefNodeAddr(c, nAddr) == nil:
           stackTrace(c, tos, pc, reportStr(
             rsemVmErrInternal, "opcWrDeref internal error")) # refs bug #16613
 
@@ -943,6 +941,7 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
           applyToNode(regToNode(c, regs[rc]), regs[ra].node)
           regs[ra].node.flags.incl nfIsRef
       else: stackTrace(c, tos, pc, reportSem(rsemVmNilAccess))
+
     of opcAddInt:
       decodeBC(rkInt)
       let
@@ -1573,6 +1572,8 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
         putIntoReg(regs[ra], cnst)
       else:
         ensureKind(rkNode)
+        # if `??`(c.config, c.module.info, "tnimnode.nim"):
+        #   echo c.config.treeRepr(cnst)
         regs[ra].node = cnst
     of opcAsgnConst:
       let rb = instr.regBx - wordExcess
@@ -2447,6 +2448,8 @@ proc evalConstExprAux(module: PSym; idgen: IdGenerator;
   addInNimDebugUtils(g.config, "evalConstExprAux")
   #if g.config.errorCounter > 0: return n
   let n = transformExpr(g, idgen, module, n)
+  if `??`(g.config, n.info, "tnimnode.nim"):
+    echo g.config.treeRepr(n)
   setupGlobalCtx(module, g, idgen)
   var c = PCtx g.vm
   let oldMode = c.mode

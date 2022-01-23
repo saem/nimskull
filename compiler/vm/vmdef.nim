@@ -232,10 +232,10 @@ func idx*(n: NodeAddr): int {.inline.} =
   # assert n != nilNodeAddr, "attempting to get an idx of a nil node"
   n.int - 1
 func toNodeAddr(i: int): NodeAddr {.inline.} =
-  ## internal convert an int to a `NodeAddr`, assumes `i` is an index
-  ## originally; unsafe as it might not exist
-  if i < 0: nilNodeAddr
-  else: NodeAddr i + 1
+  ## internal convert an int to a `NodeAddr`, the VM casts to int all the time
+  ## so assume `i` is already offset by 1; unsafe as it might not exist
+  if i <= 0: nilNodeAddr
+  else: NodeAddr i
 
 proc addrNode*(c: PCtx, n: PNode): NodeAddr =
   ## "take" the address of a node
@@ -246,7 +246,7 @@ proc addrNode*(c: PCtx, n: PNode): NodeAddr =
     c.nodeAddrs.add n.id
     NodeAddr c.nodeAddrs.len
   else:
-    found.toNodeAddr
+    (found + 1).toNodeAddr
 
 proc setAddr*(c: PCtx, a: NodeAddr, n: PNode) {.inline.} =
   ## store the node at the given address
@@ -254,4 +254,5 @@ proc setAddr*(c: PCtx, a: NodeAddr, n: PNode) {.inline.} =
 
 proc derefNodeAddr*(c: PCtx, a: NodeAddr): PNode {.inline.} =
   ## "dereference" a `NodeAddr` to a `PNode`
+  assert a.int > 0, "nil NodeAddr"
   c.nodeAddrs[a.idx].idToNode

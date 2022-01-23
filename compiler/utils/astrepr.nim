@@ -62,6 +62,7 @@ const treeReprAllFields* = { trfShowSymFlags .. trfShowNodeTypes }
 const defaultTreeReprFlags* = {
   trfShowNodeIds,
   trfPositionIndexed,
+  trfShowNodeFlags,
   trfReportInfo,
   trfSkipAuxError
 } + treeReprAllFields - {

@@ -836,7 +836,7 @@ type
   NodeData* = object
     ## bare minimum data we need to know about every node
     kind*: TNodeKind    ## presently the same as the nim node
-    extra*: ExtraDataId  ## id into extra data about this node, depends on
+    extra*: ExtraDataId ## id into extra data about this node, depends on
                         ## `kind`, for lookup of literal, sym, ident, etc
 
   State* = ref object
@@ -1231,7 +1231,7 @@ proc kind*(n: PNode): TNodeKind =
     result = state.nodeList[n.idx].kind
 
 proc typ*(n: PNode): PType {.inline.} =
-  state.nodeTyp.getOrDefault(n.id)
+  state.nodeTyp.getOrDefault(n.id, nil)
 proc `typ=`*(n: PNode, t: PType) {.inline.} =
   state.nodeTyp[n.id] = t
 
@@ -1263,7 +1263,11 @@ proc floatVal*(n: PNode): var BiggestFloat {.inline.} =
   result = state.nodeFlt[n.extraId.idx]
 proc `floatVal=`*(n: PNode, v: BiggestFloat) {.inline.} =
   # assert n.kind in {nkFloatLit..nkFloat128Lit}, "not a float, id: " & $n.id
-  state.nodeFlt[n.extraId.idx] = v
+  if n.extraId == nilExtraDataId:
+    state.nodeFlt.add v
+    state.nodeList[n.idx].extra = ExtraDataId state.nodeFlt.len
+  else:
+    state.nodeFlt[n.extraId.idx] = v
 
 proc strVal*(n: PNode): var string {.inline.} =
   # assert n.kind in {nkStrLit..nkTripleStrLit}, "not a string, id: " & $n.id
@@ -1307,21 +1311,26 @@ const haveNoSons = {
     nkIdent
   }
 
+proc initSons*(n: PNode) {.inline.} =
+  ## reset sons storage, this shouldn't be needed if lifetimes were clarified
+  ## and the VM didn't abuse nodes as it does.
+  if n.extraId == nilExtraDataId:
+      state.astData.add @[]
+      state.nodeList[n.idx].extra = ExtraDataId state.astData.len
+
 proc sons*(n: PNode): var TNodeSeq {.inline.} =
   # assert n.kind notin haveNoSons, "not a parent, id: " & $n.id
   {.cast(noSideEffect).}:
     # assert n.id.int <= state.nodeList.len, "invalid node id: " & $n.id.int
-    if n.extraId == nilExtraDataId:
-      state.astData.add @[]
-      state.nodeList[n.idx].extra = ExtraDataId state.astData.len
+    initSons(n)
     result = state.astData[n.extraId.idx]
 proc `sons=`*(n: PNode, sons: TNodeSeq) =
   # assert n.kind notin haveNoSons, "not a parent, id: " & $n.id
   # assert n.id.int <= state.nodeList.len, "invalid node id: " & $n.id.int
   state.astData[n.extraIdx] = sons
 
-proc reportId*(n: PNode): var ReportId {.inline.} =
-  state.nodeRpt[n.id]
+proc reportId*(n: PNode): ReportId {.inline.} =
+  state.nodeRpt.getOrDefault(n.id, emptyReportId)
 proc `reportId=`*(n: PNode, id: ReportId) {.inline.} =
   state.nodeRpt[n.id] = id
 
