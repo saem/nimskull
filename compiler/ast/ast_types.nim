@@ -1181,7 +1181,7 @@ func extraDataKind*(k: TNodeKind): ExtraDataKind {.inline.} =
 
 const
   # unknownLineInfoId = InfoId 0
-  nilNodeId = NodeId 0
+  nilNodeId* = NodeId 0
   nilExtraDataId* = ExtraDataId 0
 
 let nilPNode* = PNode(id: nilNodeId)

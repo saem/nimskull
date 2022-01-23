@@ -380,7 +380,7 @@ proc getDeclPragma*(n: PNode): PNode =
     assert result.kind == nkPragma, $(result.kind, n.kind)
 
 when defined(useNodeIds):
-  const nodeIdToDebug* = NodeId 938146 # 2322968
+  const nodeIdToDebug* = NodeId -1 # 2322968
 
 template newNodeImpl(kind: TNodeKind, info2: TLineInfo) =
   # result = PNode(kind: kind, info: info2)

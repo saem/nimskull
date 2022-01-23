@@ -58,10 +58,10 @@ proc getVar*(a: VmArgs; i: Natural): PNode =
   # depending on whether we come from top-level or proc scope, we need to consider 2 cases
   case p.kind
   of rkRegisterAddr: result = p.regAddr.node
-  of rkNodeAddr: result = a.nodeAddrs[p.nodeAddr.idx].idToNode
+  of rkNodeAddr: result = p.nodeAddr.derefNode
   else: doAssert false, $p.kind
 
 proc getNodeAddr*(a: VmArgs; i: Natural): PNode =
   let nodeAddr = getX(rkNodeAddr, nodeAddr)
-  result = a.nodeAddrs[nodeAddr.idx].idToNode
+  result = nodeAddr.derefNode
   doAssert result != nil

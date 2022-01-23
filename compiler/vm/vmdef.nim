@@ -100,7 +100,8 @@ type
     slotTempComplex,  # some complex temporary (s.node field is used)
     slotTempPerm      # slot is temporary but permanent (hack)
 
-  NodeAddr* = distinct int    ## index/identifier into `TCtx.nodeAddrs`
+  # NodeAddr* = distinct int    ## index/identifier into `TCtx.nodeAddrs`
+  NodeAddr* = distinct PNode ## a PNode, but used an address in the VM
 
   TFullReg* = object  # with a custom mark proc, we could use the same
                       # data representation as LuaJit (tagged NaNs).
@@ -110,7 +111,7 @@ type
     of rkFloat: floatVal*: BiggestFloat
     of rkNode: node*: PNode
     of rkRegisterAddr: regAddr*: ptr TFullReg
-    of rkNodeAddr: nodeAddr*: NodeAddr
+    of rkNodeAddr: nodeAddr*: NodeAddr ## `nkIntLit`, holds `NodeId`
 
   PProc* = ref object
     blocks*: seq[TBlock]    # blocks; temp data structure
@@ -122,7 +123,6 @@ type
     slots*: ptr UncheckedArray[TFullReg]
     currentException*: PNode
     currentLineInfo*: TLineInfo
-    nodeAddrs*: seq[NodeId]               ## hack to allow derefs of rkNodeAddr
   VmCallback* = proc (args: VmArgs) {.closure.}
 
   PCtx* = ref TCtx
@@ -153,8 +153,8 @@ type
     templInstCounter*: ref int # gives every template instantiation a unique ID, needed here for getAst
     vmstateDiff*: seq[(PSym, PNode)] # we remember the "diff" to global state here (feature for IC)
     procToCodePos*: Table[int, int]
-    nodeAddrs*: seq[NodeId] ## maintain "references" to PNodes, so we can alter
-                            ## which PNode we're referring to
+    # nodeAddrs*: seq[NodeId] ## maintain "references" to PNodes, so we can alter
+    #                          ## which PNode we're referring to
 
   PStackFrame* = ref TStackFrame
   TStackFrame* {.acyclic.} = object
@@ -206,7 +206,7 @@ proc registerCallback*(c: PCtx; name: string; callback: VmCallback): int {.disca
 
 const
   slotSomeTemp* = slotTempUnknown
-  nilNodeAddr* = NodeAddr 0
+  # nilNodeAddr* = NodeAddr 0
 
 # flag is used to signal opcSeqLen if node is NimNode.
 const nimNodeFlag* = 16
@@ -219,40 +219,81 @@ template regBx*(x: TInstr): int = (x.TInstrType shr regBxShift and regBxMask).in
 
 template jmpDiff*(x: TInstr): int = regBx(x) - wordExcess
 
-proc `==`*(a, b: NodeAddr): bool {.borrow.}
+# proc `==`*(a, b: NodeAddr): bool {.borrow.}
+# func `==`*(a: NodeAddr, b: typeof(nil)): bool {.inline.} =
+#   a == nilNodeAddr
+# func `==`*(a: typeof(nil), b: NodeAddr): bool {.inline.} =
+#   b == nilNodeAddr
+# func isNil*(a: NodeAddr): bool {.inline.} =
+#   a == nilNodeAddr
+
+# func idx*(n: NodeAddr): int {.inline.} =
+#   ## internal NodeAddr to node ref index
+#   # assert n != nilNodeAddr, "attempting to get an idx of a nil node"
+#   n.int - 1
+# func toNodeAddr(i: int): NodeAddr {.inline.} =
+#   ## internal convert an int to a `NodeAddr`, the VM casts to int all the time
+#   ## so assume `i` is already offset by 1; unsafe as it might not exist
+#   if i <= 0: nilNodeAddr
+#   else: NodeAddr i
+
+# proc addrNode*(c: PCtx, n: PNode): NodeAddr =
+#   ## "take" the address of a node
+#   let
+#     found = c.nodeAddrs.find(n.id)
+#     notFound = found == -1
+#   if notFound:
+#     c.nodeAddrs.add n.id
+#     NodeAddr c.nodeAddrs.len
+#   else:
+#     (found + 1).toNodeAddr
+
+# proc setAddr*(c: PCtx, a: NodeAddr, n: PNode) {.inline.} =
+#   ## store the node at the given address
+#   c.nodeAddrs[a.idx] = n.id
+
+# proc derefNodeAddr*(c: PCtx, a: NodeAddr): PNode {.inline.} =
+#   ## "dereference" a `NodeAddr` to a `PNode`
+#   assert a.int > 0, "nil NodeAddr"
+#   c.nodeAddrs[a.idx].idToNode
+
+proc id(a: NodeAddr): NodeId {.borrow.}
+proc kind(a: NodeAddr): TNodeKind {.borrow.}
+proc intVal(n: NodeAddr): int = n.PNode.intVal.int
+proc `intVal=`(n: NodeAddr, v: BiggestInt) {.borrow.}
+
+proc `==`*(a, b: NodeAddr): bool =
+  ## two references are equal if their values are equal
+  a.intVal == b.intVal
 func `==`*(a: NodeAddr, b: typeof(nil)): bool {.inline.} =
-  a == nilNodeAddr
+  a.intVal.NodeId == nilNodeId
 func `==`*(a: typeof(nil), b: NodeAddr): bool {.inline.} =
-  b == nilNodeAddr
+  b.intVal.NodeId == nilNodeId
 func isNil*(a: NodeAddr): bool {.inline.} =
-  a == nilNodeAddr
+  a.intVal.NodeId == nilNodeId
 
-func idx*(n: NodeAddr): int {.inline.} =
-  ## internal NodeAddr to node ref index
-  # assert n != nilNodeAddr, "attempting to get an idx of a nil node"
-  n.int - 1
-func toNodeAddr(i: int): NodeAddr {.inline.} =
-  ## internal convert an int to a `NodeAddr`, the VM casts to int all the time
-  ## so assume `i` is already offset by 1; unsafe as it might not exist
-  if i <= 0: nilNodeAddr
-  else: NodeAddr i
+proc derefNode*(a: NodeAddr): PNode {.inline.} =
+  ## dereferencing a node means we have an `nkIntLit`, assume it to be a NodeId
+  ## and return the corresponding PNode based on that intVal
+  assert a.kind == nkIntLit, "not an int literal, id: " & $a.id.int
+  # xxx: should we handle nkNilLit?
+  a.intVal.NodeId.idToNode()
 
-proc addrNode*(c: PCtx, n: PNode): NodeAddr =
-  ## "take" the address of a node
-  let
-    found = c.nodeAddrs.find(n.id)
-    notFound = found == -1
-  if notFound:
-    c.nodeAddrs.add n.id
-    NodeAddr c.nodeAddrs.len
-  else:
-    (found + 1).toNodeAddr
+proc takeAddr*(n: PNode): NodeAddr {.inline.} =
+  ## taking an address is creating an nkIntLit with the val as `NodeId`
+  let id =
+    if n == nilPNode:
+      nilNodeId.int
+    else:
+      n.id.int
+  NodeAddr newIntNode(nkIntLit, id)
 
-proc setAddr*(c: PCtx, a: NodeAddr, n: PNode) {.inline.} =
-  ## store the node at the given address
-  c.nodeAddrs[a.idx] = n.id
+proc setAddr*(r: NodeAddr, newTarget: PNode) {.inline.} =
+  ## update the node `r` references to `newTarget`
+  assert r.kind == nkIntLit, "not an int literal, id: " & $r.id.int
+  r.intVal = newTarget.id.int
 
-proc derefNodeAddr*(c: PCtx, a: NodeAddr): PNode {.inline.} =
-  ## "dereference" a `NodeAddr` to a `PNode`
-  assert a.int > 0, "nil NodeAddr"
-  c.nodeAddrs[a.idx].idToNode
+proc getAddr*(r: NodeAddr): int {.inline.} =
+  ## get the address currently being referenced by `r`
+  assert r.kind == nkIntLit, "not an int literal, id: " & $r.id.int
+  r.intVal.int
