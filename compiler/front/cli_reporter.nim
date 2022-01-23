@@ -3603,7 +3603,11 @@ proc reportHook*(conf: ConfigRef, r: Report): TErrorHandling =
   # comment
   assertKind r
 
-  if (r.kind == rdbgVmCodeListing) and (
+  # TODO: remove this debug code
+  if (r.kind == rdbgVmExecTraceMinimal):
+    echo conf.reportFull(r)
+
+  elif (r.kind == rdbgVmCodeListing) and (
     (
      # If special expand target is not defined, debug all generated code
      ("expandVmListing" notin conf.symbols)

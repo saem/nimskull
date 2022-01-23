@@ -508,6 +508,7 @@ proc opConv(c: PCtx; dest: var TFullReg, src: TFullReg, desttyp, srctyp: PType):
 
 proc compile(c: PCtx, s: PSym): int =
   result = vmgen.genProc(c, s)
+  # TODO: remove this debug code
   if `??`(c.config, s.info, "tnimnode.nim"):
     c.codeListing(s, nilPNode, start = result)
     
@@ -611,6 +612,16 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
           info: c.debug[pc],
           opc: instr.opcode
       )))
+
+    # TODO: remove this debug code
+    if `??`(c.config, c.module.info, "tnimnode.nim"):
+      c.config.localReport(DebugReport(
+        kind: rdbgVmExecTraceMinimal,
+        vmgenExecMinimal: (
+          info: c.debug[pc],
+          opc: instr.opcode
+      )))
+      echo "globals: ", c.config.treeRepr(c.globals, indentIncrease = 2)
 
     c.profiler.enter(c, tos)
     case instr.opcode

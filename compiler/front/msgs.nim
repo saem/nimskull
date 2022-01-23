@@ -499,8 +499,8 @@ proc handleReport*(
     eh: TErrorHandling = doNothing
   ) =
 
-  if true or conf.canReport(id):
-    conf.m.writtenSemReports.incl id
+  # if true or conf.canReport(id):
+  #   conf.m.writtenSemReports.incl id
     conf.handleReport(conf.m.reports.getReport(id), reportFrom, eh)
 
 

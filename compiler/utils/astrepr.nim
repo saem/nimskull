@@ -312,8 +312,7 @@ proc treeRepr*(
     add substr($n.kind, 2) + fgCyan
 
     if trfShowNodeIds in flags:
-      hfield("nid")
-      add $n.id
+      hfield("nid", n.id.int.format())
 
     proc addComment(sep: bool = true) =
       if trfShowNodeComments in flags and n.comment.len > 0:
