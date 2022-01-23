@@ -248,6 +248,8 @@ proc copyValue(src: PNode): PNode =
   of nkIdent: result.ident = src.ident
   of nkStrLit..nkTripleStrLit: result.strVal = src.strVal
   else:
+    if src.kind == nkError:
+      result.reportId = src.reportId
     newSeq(result.sons, src.len)
     for i in 0..<src.len:
       result[i] = copyValue(src[i])
@@ -283,7 +285,7 @@ proc writeField(c: PCtx, n: var PNode, x: TFullReg) =
   of rkFloat: n.floatVal = x.floatVal
   of rkNode: n = copyValue(x.node)
   of rkRegisterAddr: writeField(c, n, x.regAddr[])
-  of rkNodeAddr: n = c.nodeAddrs[x.nodeAddr.idx].idToNode
+  of rkNodeAddr: n = c.derefNodeAddr(x.nodeAddr)
 
 proc putIntoReg(dest: var TFullReg; n: PNode) =
   case n.kind
