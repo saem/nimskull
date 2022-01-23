@@ -248,6 +248,10 @@ proc addrNode*(c: PCtx, n: PNode): NodeAddr =
   else:
     found.toNodeAddr
 
+proc setAddr*(c: PCtx, a: NodeAddr, n: PNode) {.inline.} =
+  ## store the node at the given address
+  c.nodeAddrs[a.idx] = n.id
+
 proc derefNodeAddr*(c: PCtx, a: NodeAddr): PNode {.inline.} =
   ## "dereference" a `NodeAddr` to a `PNode`
   c.nodeAddrs[a.idx].idToNode

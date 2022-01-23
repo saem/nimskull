@@ -277,7 +277,8 @@ proc writeField(c: PCtx, n: var PNode, x: TFullReg) =
   of rkNone: discard
   of rkInt:
     if n.kind == nkNilLit:
-      n = newNode(nkIntLit) # ideally, `nkPtrLit`
+      transitionIntKind(n, nkIntLit) # ideally, `nkPtrLit`
+      # n = newNode(nkIntLit) # ideally, `nkPtrLit`
     n.intVal = x.intVal
   of rkFloat: n.floatVal = x.floatVal
   of rkNode: n = copyValue(x.node)
@@ -308,7 +309,7 @@ proc regToNode(c: PCtx, x: TFullReg): PNode =
   of rkFloat: result = newNode(nkFloatLit); result.floatVal = x.floatVal
   of rkNode: result = x.node
   of rkRegisterAddr: result = regToNode(c, x.regAddr[])
-  of rkNodeAddr: result = c.nodeAddrs[x.nodeAddr.idx].idToNode
+  of rkNodeAddr: result = derefNodeAddr(c, x.nodeAddr)
 
 template getstr(a: untyped): untyped =
   (if a.kind == rkNode: a.node.strVal else: $chr(int(a.intVal)))
@@ -751,7 +752,7 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
         if regs[rb].kind == rkNode:
           regs[rb].node
         else:
-          c.nodeAddrs[regs[rb].nodeAddr.idx].idToNode
+          c.derefNodeAddr(regs[rb].nodeAddr)
       if src.kind notin {nkEmpty..nkTripleStrLit} and idx <% src.len:
         # regs[ra].nodeAddr = src.sons[idx].id
         regs[ra].nodeAddr = addrNode(c, src.sons[idx])
@@ -910,7 +911,7 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
         # twice.
         # TODO: This should likely be handled differently in vmgen.
         let nAddr = regs[ra].nodeAddr
-        if nAddr == nil:
+        if nAddr == nil and derefNodeAddr(c, nAddr) == nil:
           stackTrace(c, tos, pc, reportStr(
             rsemVmErrInternal, "opcWrDeref internal error")) # refs bug #16613
 
@@ -919,7 +920,7 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
           n.applyToNode(nDest)
           # c.nodeAddrs[nAddr.idx] = n.id
         else:
-          regs[ra].nodeAddr = addrNode(c, n)
+          c.setAddr(nAddr, n)
       of rkRegisterAddr: regs[ra].regAddr[] = regs[rc]
       of rkNode:
          # xxx: also check for nkRefTy as in opcLdDeref?
@@ -1113,25 +1114,25 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
       decodeBC(rkInt)
       template getTyp(n): untyped =
         n.typ.skipTypes(abstractInst)
-      proc ptrEquality(n1: PNode, n2: PNode): bool =
+      proc ptrEquality(n1: NodeAddr, n2: PNode): bool =
         ## true if n2.intVal represents a ptr equal to n1
         case n2.kind
-        of nkNilLit: return n1 == nilPNode
+        of nkNilLit: return n1 == nilNodeAddr
         of nkIntLit: # TODO: nkPtrLit
           # for example, n1.kind == nkFloatLit (ptr float)
           # the problem is that n1.typ == nil so we can't compare n1.typ and n2.typ
           # this is the best we can do (pending making sure we assign a valid n1.typ to nodeAddr's)
           let t2 = n2.getTyp
-          return t2.kind in PtrLikeKinds and n2.intVal == n1.id.int
+          return t2.kind in PtrLikeKinds and n2.intVal == n1.int
         else: return false
 
       if regs[rb].kind == rkNodeAddr:
         if regs[rc].kind == rkNodeAddr:
           ret = regs[rb].nodeAddr == regs[rc].nodeAddr
         else:
-          ret = ptrEquality(derefNodeAddr(c, regs[rb].nodeAddr), regs[rc].node)
+          ret = ptrEquality(regs[rb].nodeAddr, regs[rc].node)
       elif regs[rc].kind == rkNodeAddr:
-        ret = ptrEquality(derefNodeAddr(c, regs[rc].nodeAddr), regs[rb].node)
+        ret = ptrEquality(regs[rc].nodeAddr, regs[rb].node)
       else:
         let nb = regs[rb].node
         let nc = regs[rc].node
@@ -1778,10 +1779,6 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
         stackTrace(c, tos, pc, reportStr(rsemVmFieldNotFound, "ident"))
     of opcNodeId:
       decodeB(rkInt)
-      # when defined(useNodeIds):
-        # regs[ra].intVal = regs[rb].node.id
-      # else:
-      #   regs[ra].intVal = -1
       regs[ra].intVal = regs[rb].node.id.int
     of opcNGetType:
       let rb = instr.regB
