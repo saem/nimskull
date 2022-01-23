@@ -60,6 +60,7 @@ export colortext.`$`
 const treeReprAllFields* = { trfShowSymFlags .. trfShowNodeTypes }
 
 const defaultTreeReprFlags* = {
+  trfShowNodeIds,
   trfPositionIndexed,
   trfReportInfo,
   trfSkipAuxError
@@ -310,10 +311,9 @@ proc treeRepr*(
 
     add substr($n.kind, 2) + fgCyan
 
-    when defined(useNodeids):
-      if trfShowNodeIds in flags:
-        hfield("nid")
-        add $n.id
+    if trfShowNodeIds in flags:
+      hfield("nid")
+      add $n.id
 
     proc addComment(sep: bool = true) =
       if trfShowNodeComments in flags and n.comment.len > 0:

@@ -100,6 +100,7 @@ type
     slotTempComplex,  # some complex temporary (s.node field is used)
     slotTempPerm      # slot is temporary but permanent (hack)
 
+  NodeAddr* = distinct int    ## index/identifier into `TCtx.nodeAddrs`
 
   TFullReg* = object  # with a custom mark proc, we could use the same
                       # data representation as LuaJit (tagged NaNs).
@@ -109,7 +110,7 @@ type
     of rkFloat: floatVal*: BiggestFloat
     of rkNode: node*: PNode
     of rkRegisterAddr: regAddr*: ptr TFullReg
-    of rkNodeAddr: nodeAddr*: NodeId
+    of rkNodeAddr: nodeAddr*: NodeAddr
 
   PProc* = ref object
     blocks*: seq[TBlock]    # blocks; temp data structure
@@ -121,6 +122,7 @@ type
     slots*: ptr UncheckedArray[TFullReg]
     currentException*: PNode
     currentLineInfo*: TLineInfo
+    nodeAddrs*: seq[NodeId]               ## hack to allow derefs of rkNodeAddr
   VmCallback* = proc (args: VmArgs) {.closure.}
 
   PCtx* = ref TCtx
@@ -151,6 +153,8 @@ type
     templInstCounter*: ref int # gives every template instantiation a unique ID, needed here for getAst
     vmstateDiff*: seq[(PSym, PNode)] # we remember the "diff" to global state here (feature for IC)
     procToCodePos*: Table[int, int]
+    nodeAddrs*: seq[NodeId] ## maintain "references" to PNodes, so we can alter
+                            ## which PNode we're referring to
 
   PStackFrame* = ref TStackFrame
   TStackFrame* {.acyclic.} = object
@@ -202,6 +206,7 @@ proc registerCallback*(c: PCtx; name: string; callback: VmCallback): int {.disca
 
 const
   slotSomeTemp* = slotTempUnknown
+  nilNodeAddr* = NodeAddr 0
 
 # flag is used to signal opcSeqLen if node is NimNode.
 const nimNodeFlag* = 16
@@ -213,3 +218,36 @@ template regC*(x: TInstr): TRegister = TRegister(x.TInstrType shr regCShift and 
 template regBx*(x: TInstr): int = (x.TInstrType shr regBxShift and regBxMask).int
 
 template jmpDiff*(x: TInstr): int = regBx(x) - wordExcess
+
+proc `==`*(a, b: NodeAddr): bool {.borrow.}
+func `==`*(a: NodeAddr, b: typeof(nil)): bool {.inline.} =
+  a == nilNodeAddr
+func `==`*(a: typeof(nil), b: NodeAddr): bool {.inline.} =
+  b == nilNodeAddr
+func isNil*(a: NodeAddr): bool {.inline.} =
+  a == nilNodeAddr
+
+func idx*(n: NodeAddr): int {.inline.} =
+  ## internal NodeAddr to node ref index
+  # assert n != nilNodeAddr, "attempting to get an idx of a nil node"
+  n.int - 1
+func toNodeAddr(i: int): NodeAddr {.inline.} =
+  ## internal convert an int to a `NodeAddr`, assumes `i` is an index
+  ## originally; unsafe as it might not exist
+  if i < 0: nilNodeAddr
+  else: NodeAddr i + 1
+
+proc addrNode*(c: PCtx, n: PNode): NodeAddr =
+  ## "take" the address of a node
+  let
+    found = c.nodeAddrs.find(n.id)
+    notFound = found == -1
+  if notFound:
+    c.nodeAddrs.add n.id
+    NodeAddr c.nodeAddrs.len
+  else:
+    found.toNodeAddr
+
+proc derefNodeAddr*(c: PCtx, a: NodeAddr): PNode {.inline.} =
+  ## "dereference" a `NodeAddr` to a `PNode`
+  c.nodeAddrs[a.idx].idToNode
