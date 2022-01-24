@@ -922,8 +922,6 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
       of rkNode:
          # xxx: also check for nkRefTy as in opcLdDeref?
         if not maybeHandlePtr(regs[ra].node, regs[rc], true):
-          # regs[ra].node[] = regs[rc].regToNode[]
-          doAssert false, "Why are we here?"
           applyToNode(regs[rc].regToNode, regs[ra].node)
           regs[ra].node.flags.incl nfIsRef
       else: stackTrace(c, tos, pc, reportSem(rsemVmNilAccess))
