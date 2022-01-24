@@ -559,11 +559,11 @@ when not defined(nimHasSinkInference):
   {.pragma: nosinks.}
 
 proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
-  var pc = start
-  var tos = tos
-  # Used to keep track of where the execution is resumed.
-  var savedPC = -1
-  var savedFrame: PStackFrame
+  var
+    pc = start
+    tos = tos
+    savedPC = -1            ## keeps track of where the execution is resumed
+    savedFrame: PStackFrame
   when defined(gcArc) or defined(gcOrc):
     template updateRegsAlias = discard
     template regs: untyped = tos.slots
@@ -584,8 +584,9 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
   #echo "NEW RUN ------------------------"
   while true:
     #{.computedGoto.}
-    let instr = c.code[pc]
-    let ra = instr.regA
+    let
+      instr = c.code[pc]
+      ra = instr.regA
 
     when traceCode:
       template regDescr(r): TRegisterKind =
@@ -620,7 +621,7 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
           info: c.debug[pc],
           opc: instr.opcode
       )))
-      echo "globals: ", c.config.treeRepr(c.globals, indentIncrease = 2)
+      # echo "globals: ", c.config.treeRepr(c.globals, indentIncrease = 2)
 
     c.profiler.enter(c, tos)
     case instr.opcode
@@ -926,11 +927,10 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
             rsemVmErrInternal, "opcWrDeref internal error")) # refs bug #16613
 
         let nDest = nAddr.derefNode()
-        if (nfIsRef notin nDest.flags and nfIsRef notin n.flags):
-          n.applyToNode(nDest)
-          # c.nodeAddrs[nAddr.idx] = n.id
-        else:
+        if (nfIsRef in nDest.flags and nfIsRef in n.flags):
           setAddr(nAddr, n)
+        else:
+          n.applyToNode(nDest)
       of rkRegisterAddr: regs[ra].regAddr[] = regs[rc]
       of rkNode:
          # xxx: also check for nkRefTy as in opcLdDeref?
