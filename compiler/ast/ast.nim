@@ -837,7 +837,6 @@ proc applyToNode*(src, dest: PNode) =
   # assert not src.isNil
   # assert dest.id != src.id, "applying to self, id: " & $src.id
   state.nodeList[dest.idx] = state.nodeList[src.idx]
-  state.nodeList[dest.idx].extra = nilExtraDataId # will freshly copy below
   state.nodeFlag[dest.idx] = state.nodeFlag[src.idx]
   state.nodeInf[dest.idx] = state.nodeInf[src.idx]
   if state.nodeTyp.hasKey(src.id):
@@ -856,7 +855,6 @@ proc applyToNode*(src, dest: PNode) =
   of ExtraDataIdentifier:
     dest.ident = src.ident
   of ExtraDataAst, ExtraDataNone:
-    dest.initSons()
     dest.sons = src.sons
 
 proc copyNode*(src: PNode): PNode =

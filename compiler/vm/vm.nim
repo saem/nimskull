@@ -614,7 +614,7 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
       )))
 
     # TODO: remove this debug code
-    if `??`(c.config, c.module.info, "tnimnode.nim"):
+    if `??`(c.config, if tos.prc != nil: tos.prc.info else: c.module.info, "tnimnode.nim"):
       c.config.localReport(DebugReport(
         kind: rdbgVmExecTraceMinimal,
         vmgenExecMinimal: (
@@ -1277,6 +1277,7 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
               ast[i] = a.sym.ast[i]
             ast[bodyPos] = transformBody(c.graph, c.idgen, a.sym, cache=true)
             ast.copyTree()
+        # xxx: missing nfIsRef?
     of opcSymOwner:
       decodeB(rkNode)
       let a = regs[rb].node

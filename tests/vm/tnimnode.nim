@@ -3,7 +3,6 @@ import macros
 proc assertEq(arg0,arg1: string): void =
   if arg0 != arg1:
     raiseAssert("strings not equal:\n" & arg0 & "\n" & arg1)
-# TODO bring back all this commented out code
 # a simple assignment of stmtList to another variable
 var node {.compileTime.}: NimNode
 # an assignment of stmtList into an array
@@ -12,7 +11,7 @@ var nodeArray {.compileTime.}: array[1, NimNode]
 var nodeSeq {.compileTime.} = newSeq[NimNode](2)
 
 proc checkNode(arg: NimNode; name: string): void {. compileTime .} =
-  # echo "checking ", name
+  echo "checking ", name
 
   assertEq arg.lispRepr, """(StmtList (DiscardStmt (Empty)))"""
 
@@ -26,12 +25,12 @@ proc checkNode(arg: NimNode; name: string): void {. compileTime .} =
 
   assertEq arg.lispRepr,          """(StmtList (DiscardStmt (Empty)) (Call (Ident "echo") (StrLit "Hello World")))"""
   assertEq node.lispRepr,         """(StmtList (DiscardStmt (Empty)) (Call (Ident "echo") (StrLit "Hello World")))"""
-  # assertEq nodeArray[0].lispRepr, """(StmtList (DiscardStmt (Empty)) (Call (Ident "echo") (StrLit "Hello World")))"""
-  # assertEq nodeSeq[0].lispRepr,   """(StmtList (DiscardStmt (Empty)) (Call (Ident "echo") (StrLit "Hello World")))"""
-  # assertEq seqAppend[0].lispRepr, """(StmtList (DiscardStmt (Empty)) (Call (Ident "echo") (StrLit "Hello World")))"""
-  # assertEq seqAppend[1].lispRepr, """(StmtList (DiscardStmt (Empty)) (Call (Ident "echo") (StrLit "Hello World")))"""
+  assertEq nodeArray[0].lispRepr, """(StmtList (DiscardStmt (Empty)) (Call (Ident "echo") (StrLit "Hello World")))"""
+  assertEq nodeSeq[0].lispRepr,   """(StmtList (DiscardStmt (Empty)) (Call (Ident "echo") (StrLit "Hello World")))"""
+  assertEq seqAppend[0].lispRepr, """(StmtList (DiscardStmt (Empty)) (Call (Ident "echo") (StrLit "Hello World")))"""
+  assertEq seqAppend[1].lispRepr, """(StmtList (DiscardStmt (Empty)) (Call (Ident "echo") (StrLit "Hello World")))"""
 
-  # echo "OK"
+  echo "OK"
 
 # the root node that is used to generate the Ast
 var stmtList {.compileTime.}: NimNode
@@ -42,18 +41,18 @@ static:
   checkNode(stmtList, "direct construction")
 
 
-# macro foo(stmtList: untyped): untyped =
-#   checkNode(stmtList, "untyped macro argument")
+macro foo(stmtList: untyped): untyped =
+  checkNode(stmtList, "untyped macro argument")
 
-# foo:
-#   discard
+foo:
+  discard
 
 
-# static:
-#   stmtList = quote do:
-#     discard
+static:
+  stmtList = quote do:
+    discard
 
-#   checkNode(newTree(nnkStmtList, stmtList), "create with quote")
+  checkNode(newTree(nnkStmtList, stmtList), "create with quote")
 
 
 # static:
