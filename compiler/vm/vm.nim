@@ -1558,8 +1558,6 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
         putIntoReg(regs[ra], cnst)
       else:
         ensureKind(rkNode)
-        # if `??`(c.config, c.module.info, "tnimnode.nim"):
-        #   echo c.config.treeRepr(cnst)
         regs[ra].node = cnst
     of opcAsgnConst:
       let rb = instr.regBx - wordExcess
@@ -2433,8 +2431,6 @@ proc evalConstExprAux(module: PSym; idgen: IdGenerator;
   addInNimDebugUtils(g.config, "evalConstExprAux")
   #if g.config.errorCounter > 0: return n
   let n = transformExpr(g, idgen, module, n)
-  if `??`(g.config, n.info, "tnimnode.nim"):
-    echo g.config.treeRepr(n)
   setupGlobalCtx(module, g, idgen)
   var c = PCtx g.vm
   let oldMode = c.mode
