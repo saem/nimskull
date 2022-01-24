@@ -613,16 +613,6 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
           opc: instr.opcode
       )))
 
-    # TODO: remove this debug code
-    if `??`(c.config, if tos.prc != nil: tos.prc.info else: c.module.info, "tnimnode.nim"):
-      c.config.localReport(DebugReport(
-        kind: rdbgVmExecTraceMinimal,
-        vmgenExecMinimal: (
-          info: c.debug[pc],
-          opc: instr.opcode
-      )))
-      # echo "globals: ", c.config.treeRepr(c.globals, indentIncrease = 2)
-
     c.profiler.enter(c, tos)
     case instr.opcode
     of opcEof: return regs[ra]
@@ -927,10 +917,7 @@ proc rawExecute(c: PCtx, start: int, tos: PStackFrame): TFullReg =
             rsemVmErrInternal, "opcWrDeref internal error")) # refs bug #16613
 
         let nDest = nAddr.derefNode()
-        if (nfIsRef in nDest.flags and nfIsRef in n.flags):
-          setAddr(nAddr, n)
-        else:
-          n.applyToNode(nDest)
+        n.applyToNode(nDest)
       of rkRegisterAddr: regs[ra].regAddr[] = regs[rc]
       of rkNode:
          # xxx: also check for nkRefTy as in opcLdDeref?

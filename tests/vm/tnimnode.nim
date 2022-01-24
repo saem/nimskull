@@ -55,25 +55,25 @@ static:
   checkNode(newTree(nnkStmtList, stmtList), "create with quote")
 
 
-# static:
-#   echo "testing body from loop"
-#   var loop = quote do:
-#     for i in 0 ..< 10:
-#       discard
+static:
+  echo "testing body from loop"
+  var loop = quote do:
+    for i in 0 ..< 10:
+      discard
 
-#   let innerBody = loop[2]
-#   innerBody.add newCall(ident"echo", newLit("Hello World"))
+  let innerBody = loop[2]
+  innerBody.add newCall(ident"echo", newLit("Hello World"))
 
-#   assertEq loop[2].lispRepr, innerBody.lispRepr
+  assertEq loop[2].lispRepr, innerBody.lispRepr
 
-#   echo "OK"
+  echo "OK"
 
 
-# static:
-#   echo "testing creation of comment node"
-#   var docComment: NimNode = newNimNode(nnkCommentStmt)
-#   docComment.strVal = "This is a doc comment"
+static:
+  echo "testing creation of comment node"
+  var docComment: NimNode = newNimNode(nnkCommentStmt)
+  docComment.strVal = "This is a doc comment"
 
-#   assertEq repr(docComment), "## This is a doc comment"
+  assertEq repr(docComment), "## This is a doc comment"
 
-#   echo "OK"
+  echo "OK"
