@@ -443,8 +443,7 @@ func severity*(report: CmdReport): ReportSeverity =
     of rcmdErrorKinds: rsevError
 
 type
-
-  DebugSemStepDirection* = enum semstepEnter, semstepLeave
+  DebugStepDirection* {.pure.} = enum stepEnter, stepLeave
   DebugSemStepKind* = enum
     stepNodeToNode
     stepNodeToSym
@@ -456,9 +455,8 @@ type
     stepError
     stepTrack
 
-
   DebugSemStep* = object
-    direction*: DebugSemStepDirection
+    direction*: DebugStepDirection
     level*: int
     name*: string
     node*: PNode ## Depending on the step direction this field stores
@@ -493,7 +491,6 @@ type
     ra*: int
     rb*: int
     rc*: int
-
 
   DebugReport* = object of ReportBase
     case kind*: ReportKind

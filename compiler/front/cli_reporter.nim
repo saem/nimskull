@@ -3182,8 +3182,8 @@ proc reportBody*(conf: ConfigRef, r: DebugReport): string =
       result.addf("$1]", align($s.level, 2, '#'))
       result.add(
         repeat("  ", s.level),
-        tern(s.direction == semstepEnter, "> ", "< "),
-        conf.wrap(s.name, tern(s.direction == semstepEnter, fgGreen, fgRed)),
+        tern(s.direction == stepEnter, "> ", "< "),
+        conf.wrap(s.name, tern(s.direction == stepEnter, fgGreen, fgRed)),
         " @ ",
         conf.wrap(conf.toStr(r.reportInst, dropTraceExt), fgCyan),
         tern(
@@ -3199,7 +3199,7 @@ proc reportBody*(conf: ConfigRef, r: DebugReport): string =
         res[].add ":"
         res[].add value
 
-      let enter = s.direction == semstepEnter
+      let enter = s.direction == stepEnter
       if conf.hack.semTraceData and
          s.kind != stepTrack #[ 'track' has no extra data fields ]#:
         field("kind", $s.kind)

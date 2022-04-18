@@ -163,7 +163,7 @@ const hasStacktrace = compileOption"stacktrace"
 
 template traceStepImpl*(
     params: StepParams,
-    stepDirection: DebugSemStepDirection,
+    stepDirection: DebugStepDirection,
     body: untyped,
   ) =
   ## Construct and write debug step report using given parameters. Mutable
@@ -206,7 +206,7 @@ template traceEnterIt*(
   ## level).
   var tmp = params
   tmp.info = instLoc(templateDepth)
-  traceStepImpl(params, semstepEnter, body)
+  traceStepImpl(params, stepEnter, body)
 
 template traceLeaveIt*(
     params: StepParams,
@@ -217,7 +217,7 @@ template traceLeaveIt*(
   ## `traceEnterIt` and `traceStepImpl` documentation.
   var tmp = params
   tmp.info = instLoc(instDepth)
-  traceStepImpl(tmp, semstepLeave, body)
+  traceStepImpl(tmp, stepLeave, body)
 
 
 template addInNimDebugUtils*(c: ConfigRef; action: string; n, r: PNode;
