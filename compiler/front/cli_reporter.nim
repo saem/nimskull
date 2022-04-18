@@ -3164,7 +3164,7 @@ proc reportBody*(conf: ConfigRef, r: DebugReport): string =
   case DebugReportKind(r.kind):
     of rdbgTraceStep:
       let
-        s = r.semstep
+        s = r.traceStep
         indent = s.level * 2 + (
           2 #[ Item indentation ]# +
           5 #[ Global entry indentation ]#
@@ -3201,15 +3201,15 @@ proc reportBody*(conf: ConfigRef, r: DebugReport): string =
 
       let enter = s.direction == stepEnter
       if conf.hack.semTraceData and
-         s.kind != stepTrack #[ 'track' has no extra data fields ]#:
-        field("kind", $s.kind)
-        case s.kind:
+          s.kind == traceStepSem and
+          s.semKind != stepTrack #[ 'track' has no extra data fields ]#:
+        field("kind", $s.semKind)
+        case s.semKind:
           of stepNodeToNode:
             if enter:
               field("from node")
             else:
               field("to node")
-
             result.add render(s.node)
 
           of stepSymNodeToNode:
@@ -3644,7 +3644,7 @@ proc reportHook*(conf: ConfigRef, r: Report): TErrorHandling =
     if conf.hack.reportInTrace:
       var indent {.global.}: int
       if r.kind == rdbgTraceStep:
-        indent = r.debugReport.semstep.level
+        indent = r.debugReport.traceStep.level
       case r.kind
       of rdbgTracerKinds:
         conf.writeln(conf.reportFull(r))

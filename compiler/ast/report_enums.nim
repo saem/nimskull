@@ -930,10 +930,7 @@ type
 
   ReportKinds* = set[ReportKind]
 
-
-const rstWarnings* = {rbackRstTestUnsupported .. rbackRstRstStyle}
-
-type
+  # subranges for various kinds
   LexerReportKind* = range[rlexMalformedUnderscores .. rlexSyntaxesCode]
   ParserReportKind* = range[rparInvalidIndentation .. rparName]
 
@@ -957,7 +954,6 @@ const
   rlexHintKinds*    = {rlexLineTooLong .. rlexSyntaxesCode}
   rlexWarningKinds* = {rlexDeprecatedOctalPrefix .. rlexDeprecatedOctalPrefix}
   rlexErrorKinds*   = {rlexMalformedUnderscores .. rlexUnclosedComment}
-
 
   #-------------------------------  parser  --------------------------------#
   repParserKinds* = {low(ParserReportKind) .. high(ParserReportKind)}
@@ -1000,7 +996,6 @@ const
   rextWarningKinds* = {rextDeprecated}
   rextHintKinds* = {rextConf .. rextPath}
 
-
   #------------------------------  internal  -------------------------------#
   repInternalKinds*: ReportKinds = {
     low(InternalReportKind) .. high(InternalReportKind)}
@@ -1013,6 +1008,8 @@ const
   rintDataPassKinds* = {rintStackTrace .. rintEchoMessage}
   rintCliKinds* = {rintCliHelp .. rintCliAdvancedUsage}
 
+  #---------------------------------  rst  ---------------------------------#
+  rstWarnings* = {rbackRstTestUnsupported .. rbackRstRstStyle}
 
 const
   repWarningKinds*: ReportKinds =
@@ -1046,7 +1043,6 @@ const
 
   repFatalKinds*: ReportKinds = rintFatalKinds
   repAllKinds* = {low(ReportKind) .. high(ReportKind)}
-
 
 
 const

@@ -443,8 +443,13 @@ func severity*(report: CmdReport): ReportSeverity =
     of rcmdErrorKinds: rsevError
 
 type
+  DebugTraceStepKind* {.pure.} = enum
+    traceStepSem      ## semantic analysis area
+    traceStepCodeGen  ## code generation
+
   DebugStepDirection* {.pure.} = enum stepEnter, stepLeave
-  DebugSemStepKind* = enum
+
+  DebugTraceSemStepKind* = enum
     stepNodeToNode
     stepNodeToSym
     stepSymNodeToNode
@@ -455,26 +460,27 @@ type
     stepError
     stepTrack
 
-  DebugSemStep* = object
+  DebugTraceStep* = object
     direction*: DebugStepDirection
     level*: int
     name*: string
-    node*: PNode ## Depending on the step direction this field stores
-                 ## either input or output node
     steppedFrom*: ReportLineInfo
-    case kind*: DebugSemStepKind
-      of stepNodeToNode, stepTrack, stepWrongNode, stepError:
+    case kind*: DebugTraceStepKind
+      of traceStepCodeGen:
         discard
-
-      of stepNodeTypeToNode, stepTypeTypeToType:
-        typ*: PType
-        typ1*: PType
-
-      of stepNodeToSym, stepSymNodeToNode:
-        sym*: PSym
-
-      of stepNodeFlagsToNode:
-        flags*: TExprFlags
+      of traceStepSem:
+        node*: PNode ## Depending on the step direction this field stores
+                     ## either input or output node
+        case semKind*: DebugTraceSemStepKind
+          of stepNodeToNode, stepTrack, stepWrongNode, stepError:
+            discard
+          of stepNodeTypeToNode, stepTypeTypeToType:
+            typ*: PType
+            typ1*: PType
+          of stepNodeToSym, stepSymNodeToNode:
+            sym*: PSym
+          of stepNodeFlagsToNode:
+            flags*: TExprFlags
 
   DebugVmCodeEntry* = object
     isTarget*: bool
@@ -506,7 +512,7 @@ type
         ]
 
       of rdbgTraceStep:
-        semstep*: DebugSemStep
+        traceStep*: DebugTraceStep
 
       of rdbgTraceLine, rdbgTraceStart:
         ctraceData*: tuple[level: int, entries: seq[StackTraceEntry]]
@@ -529,9 +535,14 @@ type
           info: TLineInfo,
           opc: TOpcode
         ]
-
-      else:
+      
+      of rdbgTraceEnd, rdbgTraceDefined, rdbgTraceUndefined:
         discard
+
+      of repAllKinds - repDebugKinds:
+        # avoid using else to ensure we don't skip any debug kinds
+        discard
+
 
 func severity*(report: DebugReport): ReportSeverity =
   rsevDebug

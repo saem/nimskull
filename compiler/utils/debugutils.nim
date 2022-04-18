@@ -146,14 +146,14 @@ type
   StepParams* = object
     ## Parameters necessary to construct new step of the execution tracing.
     c*: ConfigRef
-    kind*: DebugSemStepKind
+    kind*: DebugTraceSemStepKind
     indentLevel*: int
     action*: string
     info*: InstantiationInfo
 
 proc stepParams*(
     c: ConfigRef,
-    kind: DebugSemStepKind,
+    kind: DebugTraceSemStepKind,
     indentLevel: int,
     action: string
   ): StepParams =
@@ -167,16 +167,17 @@ template traceStepImpl*(
     body: untyped,
   ) =
   ## Construct and write debug step report using given parameters. Mutable
-  ## `it: DebugSemStep` is injected and is accessible in the `body` that is
+  ## `it: DebugTraceStep` is injected and is accessible in the `body` that is
   ## passed to the template. `stepDirection` is assigned to the contructed
   ## step `.direction` field.
   block:
     let p = params
-    var it {.inject.} = DebugSemStep(
+    var it {.inject.} = DebugTraceStep(
       direction: stepDirection,
       level: p.indentLevel,
       name: p.action,
-      kind: p.kind
+      kind: traceStepSem,
+      semKind: p.kind
     )
 
     if hasStacktrace:
@@ -188,7 +189,7 @@ template traceStepImpl*(
 
     handleReport(p.c, wrap(p.info, DebugReport(
       kind: rdbgTraceStep,
-      semstep: it
+      traceStep: it
     )), p.info)
 
 const instDepth = -5
