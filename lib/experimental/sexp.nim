@@ -214,7 +214,7 @@ proc parseSymbol(my: var SexpParser) =
     inc(pos)
   my.bufpos = pos
 
-proc getTok(my: var SexpParser): TTokKind =
+proc getTok*(my: var SexpParser): TTokKind =
   setLen(my.a, 0)
   case my.buf[my.bufpos]
   of '-', '0'..'9': # numbers that start with a . are not parsed
@@ -707,13 +707,11 @@ proc treeRepr*(node: SexpNode): string =
 
   aux(node, 0, result)
 
-
-
 proc eat(p: var SexpParser, tok: TTokKind) =
   if p.tok == tok: discard getTok(p)
   else: raiseParseErr(p, tokToStr[tok])
 
-proc parseSexp(p: var SexpParser): SexpNode =
+proc parseSexp*(p: var SexpParser): SexpNode =
   ## Parses SEXP from a SEXP Parser `p`.
   case p.tok
   of tkString:
@@ -734,7 +732,6 @@ proc parseSexp(p: var SexpParser): SexpNode =
     result = newSSymbolMove(p.a)
     p.a = ""
     discard getTok(p)
-
   of tkParensLe:
     result = newSList()
     discard getTok(p)
@@ -748,14 +745,12 @@ proc parseSexp(p: var SexpParser): SexpNode =
       result.add(parseSexp(p))
       result = newSCons(result[0], result[1])
     eat(p, tkParensRi)
-
   of tkKeyword:
     # `:key (value)`
     let key = p.a[1 .. ^1]
     discard getTok(p)
     eat(p, tkSpace)
     result = newSKeyword(key, parseSexp(p))
-
   of tkSpace, tkDot, tkError, tkParensRi, tkEof:
     raiseParseErr(p, "(")
 
