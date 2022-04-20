@@ -143,7 +143,7 @@ template addInNimDebugUtilsAux(conf: ConfigRef; prcname: string;
 
 
 type
-  StepParams* = object
+  SemStepParams* = object
     ## Parameters necessary to construct new step of the execution tracing.
     c*: ConfigRef
     kind*: DebugTraceSemStepKind
@@ -151,18 +151,25 @@ type
     action*: string
     info*: InstantiationInfo
 
-proc stepParams*(
+  CodeGenStepParams* = object
+    ## Parameters necessary to construct new step of the execution tracing.
+    c*: ConfigRef
+    indentLevel*: int
+    action*: string
+    info*: InstantiationInfo
+
+proc semStepParams*(
     c: ConfigRef,
     kind: DebugTraceSemStepKind,
     indentLevel: int,
     action: string
-  ): StepParams =
-  StepParams(c: c, kind: kind, indentLevel: indentLevel, action: action)
+  ): SemStepParams =
+  SemStepParams(c: c, kind: kind, indentLevel: indentLevel, action: action)
 
 const hasStacktrace = compileOption"stacktrace"
 
 template traceStepImpl*(
-    params: StepParams,
+    params: SemStepParams | CodeGenStepParams,
     stepDirection: DebugStepDirection,
     body: untyped,
   ) =
@@ -172,13 +179,23 @@ template traceStepImpl*(
   ## step `.direction` field.
   block:
     let p = params
-    var it {.inject.} = DebugTraceStep(
-      direction: stepDirection,
-      level: p.indentLevel,
-      name: p.action,
-      kind: traceStepSem,
-      semKind: p.kind
-    )
+    when params is SemStepParams:
+      var it {.inject.} = DebugTraceStep(
+        direction: stepDirection,
+        level: p.indentLevel,
+        name: p.action,
+        kind: traceStepSem,
+        semKind: p.kind
+      )
+    elif params is CodeGenStepParams:
+      var it {.inject.} = DebugTraceStep(
+        direction: stepDirection,
+        level: p.indentLevel,
+        name: p.action,
+        kind: traceStepCodeGen
+      )
+    else:
+      {.error: "Param type not covered".}
 
     if hasStacktrace:
       {.line.}:
@@ -194,7 +211,7 @@ template traceStepImpl*(
 
 const instDepth = -5
 template traceEnterIt*(
-    params: StepParams,
+    params: SemStepParams | CodeGenStepParams,
     body: untyped,
     templateDepth: int = instDepth
   ): untyped =
@@ -210,7 +227,7 @@ template traceEnterIt*(
   traceStepImpl(params, stepEnter, body)
 
 template traceLeaveIt*(
-    params: StepParams,
+    params: SemStepParams | CodeGenStepParams,
     body: untyped,
     templateDepth: int = instDepth
   ): untyped =
@@ -227,12 +244,12 @@ template addInNimDebugUtils*(c: ConfigRef; action: string; n, r: PNode;
   ## and can determine the type
   when defined(nimDebugUtils):
     template enterMsg(indentLevel: int) =
-      traceEnterIt(stepParams(c, stepNodeFlagsToNode, indentLevel, action)):
+      traceEnterIt(semStepParams(c, stepNodeFlagsToNode, indentLevel, action)):
         it.node = n
         it.flags = flags
 
     template leaveMsg(indentLevel: int) =
-      traceLeaveIt(stepParams(c, stepNodeFlagsToNode, indentLevel, action)):
+      traceLeaveIt(semStepParams(c, stepNodeFlagsToNode, indentLevel, action)):
         it.node = r
         it.flags = flags
 
@@ -243,11 +260,11 @@ template addInNimDebugUtils*(c: ConfigRef; action: string; n, r: PNode) =
   ## determine the type
   when defined(nimDebugUtils):
     template enterMsg(indentLevel: int) =
-      traceEnterIt(stepParams(c, stepNodeToNode, indentLevel, action)):
+      traceEnterIt(semStepParams(c, stepNodeToNode, indentLevel, action)):
         it.node = n
 
     template leaveMsg(indentLevel: int) =
-      traceLeaveIt(stepParams(c, stepNodeToNode, indentLevel, action)):
+      traceLeaveIt(semStepParams(c, stepNodeToNode, indentLevel, action)):
         it.node = r
 
     addInNimDebugUtilsAux(c, action, enterMsg, leaveMsg)
@@ -257,11 +274,11 @@ template addInNimDebugUtilsError*(c: ConfigRef; n, e: PNode) =
   when defined(nimDebugUtils):
     const action = "newError"
     template enterMsg(indentLevel: int) =
-      traceEnterIt(stepParams(c, stepWrongNode, indentLevel, action)):
+      traceEnterIt(semStepParams(c, stepWrongNode, indentLevel, action)):
         it.node = n
 
     template leaveMsg(indentLevel: int) =
-      traceLeaveIt(stepParams(c, stepError, indentLevel, action)):
+      traceLeaveIt(semStepParams(c, stepError, indentLevel, action)):
         it.node = e
 
     addInNimDebugUtilsAux(c, action, enterMsg, leaveMsg)
@@ -272,12 +289,12 @@ template addInNimDebugUtils*(c: ConfigRef; action: string; n: PNode;
   ## determining a type node, with a possible previous type.
   when defined(nimDebugUtils):
     template enterMsg(indentLevel: int) =
-      traceEnterIt(stepParams(c, stepNodeTypeToNode, indentLevel, action)):
+      traceEnterIt(semStepParams(c, stepNodeTypeToNode, indentLevel, action)):
         it.node = n
         it.typ = prev
 
     template leaveMsg(indentLevel: int) =
-      traceLeaveIt(stepParams(c, stepNodeTypeToNode, indentLevel, action)):
+      traceLeaveIt(semStepParams(c, stepNodeTypeToNode, indentLevel, action)):
         it.node = n
         it.typ = r
 
@@ -288,11 +305,11 @@ template addInNimDebugUtils*(
   ## add tracing to procs that are primarily `PNode -> PSym`,
   when defined(nimDebugUtils):
     template enterMsg(indentLevel: int) =
-      traceEnterIt(stepParams(c, stepNodeToSym, indentLevel, action)):
+      traceEnterIt(semStepParams(c, stepNodeToSym, indentLevel, action)):
         it.node = n
 
     template leaveMsg(indentLevel: int) =
-      traceLeaveIt(stepParams(c, stepNodeToSym, indentLevel, action)):
+      traceLeaveIt(semStepParams(c, stepNodeToSym, indentLevel, action)):
         it.sym = resSym
 
     addInNimDebugUtilsAux(c, action, enterMsg, leaveMsg)
@@ -303,12 +320,12 @@ template addInNimDebugUtils*(
   ## applying pragmas to a symbol
   when defined(nimDebugUtils):
     template enterMsg(indentLevel: int) =
-      traceEnterIt(stepParams(c, stepSymNodeToNode, indentLevel, action)):
+      traceEnterIt(semStepParams(c, stepSymNodeToNode, indentLevel, action)):
         it.sym = sym
         it.node = n
 
     template leaveMsg(indentLevel: int) =
-      traceLeaveIt(stepParams(c, stepSymNodeToNode, indentLevel, action)):
+      traceLeaveIt(semStepParams(c, stepSymNodeToNode, indentLevel, action)):
         it.node = res
 
     addInNimDebugUtilsAux(c, action, enterMsg, leaveMsg)
@@ -318,12 +335,12 @@ template addInNimDebugUtils*(c: ConfigRef; action: string; x, y, r: PType) =
   ## for a common type
   when defined(nimDebugUtils):
     template enterMsg(indentLevel: int) =
-      traceEnterIt(stepParams(c, stepTypeTypeToType, indentLevel, action)):
+      traceEnterIt(semStepParams(c, stepTypeTypeToType, indentLevel, action)):
         it.typ = x
         it.typ1 = y
 
     template leaveMsg(indentLevel: int) =
-      traceLeaveIt(stepParams(c, stepTypeTypeToType, indentLevel, action)):
+      traceLeaveIt(semStepParams(c, stepTypeTypeToType, indentLevel, action)):
         it.typ = r
 
     addInNimDebugUtilsAux(c, action, enterMsg, leaveMsg)
@@ -333,11 +350,11 @@ template addInNimDebugUtils*(c: ConfigRef; action: string) =
   ## for a common type
   when defined(nimDebugUtils):
     template enterMsg(indentLevel: int) =
-      traceEnterIt(stepParams(c, stepTrack, indentLevel, action)):
+      traceEnterIt(semStepParams(c, stepTrack, indentLevel, action)):
         discard
 
     template leaveMsg(indentLevel: int) =
-      traceLeaveIt(stepParams(c, stepTrack, indentLevel, action)):
+      traceLeaveIt(semStepParams(c, stepTrack, indentLevel, action)):
         discard
 
     addInNimDebugUtilsAux(c, action, enterMsg, leaveMsg)

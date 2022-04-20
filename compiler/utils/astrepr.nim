@@ -818,7 +818,7 @@ proc inFile*(
   ## purposes as it is pretty slow. Should be used like this:
   ##
   ## ..code-block::nim
-  ##   if inFile(conf, node.info, "filename"):
+  ##   if inFile(conf, node, "filename"):
   ##     debug node # For example
   ##
   ## This proc requries implicit debug config to be set, since information
