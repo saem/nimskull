@@ -6,12 +6,20 @@ import experimental/sexp
 type
   Interpreter = object
     state: InterpreterState
-    env: Environment
+    env: Environments
 
   Source = string
 
-  Environment = object
+  Environments = object
+    supportedVersions: seq[Version]
+    global: EnvironmentData
+
+  EnvironmentData = object
     discard
+    # kind: EnvironmentKind
+    # of parentId: EnvironmentId
+  
+  # EnvironmentId = distinct int
 
   Interpretation = object
     kind: InterpretationKind
@@ -19,7 +27,8 @@ type
   InterpretationKind {.pure.} = enum
     voidProgram
     invalidProgram
-  
+    validProgram
+
   InterpreterState {.pure.} = enum
     intrpNotStarted
     intrpMeta
@@ -27,29 +36,80 @@ type
     intrpError
     intrpOutput
     intrpDone
+  
+  Version = distinct string
 
-proc interpret(i: var Interpreter, src: Source): Interpretation =
-  var sexpParser: SexpParser
-  sexpParser.open(newStringStream(src))
-  discard getTok(sexpParser)    # read the first token; "prime" the parser
-  let (parsed, err) =
+proc createInterpreter(): Interpreter =
+  Interpreter(
+    env: Environments(
+      supportedVersions: @[Version "0.0.1"]
+      )
+    )
+
+type
+  EvaluationResult = object
+    kind: EvaluationResultKind
+    # srcId: SourceId # TODO: make a distinct for this
+    # left, right: SourceSeek # TODO: make a distinct for this
+  
+  EvaluationResultKind {.pure.} = enum
+    evaluationEmptyList
+    evaluationApplicationStart
+    evaluationApplicationEnd
+    evaluationLiteralString
+    evaluationLiteralInt
+    evaluationLiteralFloat
+
+proc evaluation(i: var Interpreter, sexp: SexpNode): EvaluationResult =
+  # TODO: validate the sexp based on interpreter phase
+  case sexp.kind
+  of SList:
+    case sexp.len
+    of 0:
+      result = EvaluationResult(kind: evaluationEmptyList)
+    else:
+      case sexp[0].kind
+      of SSymbol:
+        let symRes = i.env.symbolQuery(sexp[0])
+        # if legit set for apply, else error handling
+      of SNil, SInt, SFloat, SString, SKeyword, SList, SCons:
+
+    for s in sexp:
+      case s.kind
+      of SSymbol:
+        let symRes = i.env.symbolQuery(s)
+        case symRes.kind
+        of symFound:
+          for a in s
+      of SNil, SInt, SFloat, SString, SKeyword, SList, SCons:
+        result = Interpretation(kind: invalidProgram)
+
+proc parse(parser: var SexpParser, src: Source): (SexpNode, ref SexpParsingError) =
+  parser.open(newStringStream(src))
+  discard getTok(parser)    # read the first token; "prime" the parser
+  result = 
     try:
-      (sexpParser.parseSexp(), nil)
+      (parser.parseSexp(), nil)
     except SexpParsingError as e:
       (nil, e)
     finally:
-      sexpParser.close()
+      parser.close()
+
+proc interpret(i: var Interpreter, src: Source): Interpretation =
+  var sexpParser: SexpParser
+  let (parsed, err) = sexpParser.parse(src)
 
   if err.isNil:
     for s in parsed.items: # relies on it being a list
       case i.state
       of intrpNotStarted:
         case s.kind
-        of SKeyword:
-          i.state = intrpMeta
-        of SNil, SInt, SFloat, SString, SSymbol, SList, SCons:
+        of SSymbol:
+          i.state = intrpEval
+        of SNil, SInt, SFloat, SString, SKeyword, SList, SCons:
           i.state = intrpError
       of intrpMeta:
+        # interpreter.metaEvaluation(s)
         result = Interpretation(kind: voidProgram)
       of intrpEval:
         discard
@@ -64,7 +124,6 @@ proc interpret(i: var Interpreter, src: Source): Interpretation =
     i.state = intrpError
     result = Interpretation(kind: invalidProgram)
 
-
 suite "Interpret programs":
 
   # Every program has at least one module, called the init module.
@@ -75,16 +134,28 @@ suite "Interpret programs":
         "(meta (:version \"0.0.1\"))  \n  ",
       ]
     for s in emptyPrograms:
-      var i: Interpreter
+      var i: Interpreter = createInterpreter()
       let o = interpret(i, s)
       check(o.kind == voidProgram)
 
-  test "meta and version must be on the first line":
+  test "meta with version must be on the first line":
     let invalidPrograms = ["\n(meta (:version \"0.0.1\"))", ""]
     for p in invalidPrograms:
-      var i: Interpreter
+      var i: Interpreter = createInterpreter()
       check(interpret(i, p).kind == invalidProgram)
 
-  # test "Hello, World!":
-  #   let initModule = """(meta {:version "0.0.1", :name myProgram})"""
+  test "invalid versions result in errors":
+    let invalidVersion = "(meta (:version \"0.0.3\"))"
+    var i: Interpreter = createInterpreter()
+    check(interpret(i, invalidVersion).kind == invalidProgram)
+
+  test "Hello, World!":
+    let helloProg = """(meta (:version "0.0.1"))
+    (echo "Hello, World!")
+    """
+    # var p: SexpParser
+    # let (s, e) = p.parse(helloProg)
+    # echo s
+    # var i: Interpreter = createInterpreter()
+    # check(interpret(i, helloProg).kind == validProgram)
   #   check(interpret("", initModule).kind == )
