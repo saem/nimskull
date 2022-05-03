@@ -540,6 +540,12 @@ proc semOverloadedCall(c: PContext, n: PNode,
 
   elif r.call.isError:
     result = r.call
+    if r.call.reportId != emptyReportId and
+       c.config.inFile(result, "normalizedast.nim"):
+      #  r.call.errorKind in rsemUndeclaredField:
+      debug c.config, r.call
+      debug c.config, n
+      writeStackTrace()
 
   elif efNoUndeclared notin flags:
     result = notFoundError(c, n, errors)

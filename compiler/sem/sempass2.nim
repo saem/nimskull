@@ -35,7 +35,8 @@ import
     magicsys,
   ],
   utils/[
-    debugutils
+    debugutils,
+    astrepr
   ],
   sem/[
     varpartitions,
@@ -1320,6 +1321,11 @@ proc track(tracked: PEffects, n: PNode) =
 
     inc tracked.leftPartOfAsgn
   of nkError:
+    for e in walkErrors(tracked.config, n):
+      if e.reportId == emptyReportId:
+        debug e
+        debug n
+        echo "from sempass2.track"
     localReport(tracked.config, n)
   else:
     for i in 0 ..< n.safeLen:

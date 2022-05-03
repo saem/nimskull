@@ -30,8 +30,6 @@ proc semTemplateExpr(c: PContext, n: PNode, s: PSym,
   # XXX: A more elaborate line info rewrite might be needed
   result.info = info
 
-proc semFieldAccess(c: PContext, n: PNode, flags: TExprFlags = {}): PNode
-
 template rejectEmptyNode(n: PNode) =
   # No matter what a nkEmpty node is not what we want here
   if n.kind == nkEmpty:
@@ -1036,109 +1034,6 @@ proc afterCallActions(c: PContext; n: PNode, flags: TExprFlags): PNode =
   if c.matchedConcept == nil:
     result = evalAtCompileTime(c, result)
 
-proc semIndirectOp(c: PContext, n: PNode, flags: TExprFlags): PNode =
-  addInNimDebugUtils(c.config, "semIndirectOp", n, result, flags)
-  result = nil
-  checkMinSonsLen(n, 1, c.config)
-  if n.kind == nkError: return n
-  var prc = n[0]
-  if n[0].kind == nkDotExpr:
-    checkSonsLen(n[0], 2, c.config)
-    let n0 = semFieldAccess(c, n[0])
-    case n0.kind
-    of nkDotCall:
-      # it is a static call!
-      result = n0
-      result.transitionSonsKind(nkCall)
-      result.flags.incl nfExplicitCall
-      for i in 1..<n.len: result.add n[i]
-      return semExpr(c, result, flags)
-    of nkError:
-      result = n
-      result[0] = n0
-      return wrapErrorInSubTree(c.config, result)
-    else:
-      n[0] = n0
-  else:
-    n[0] = semExpr(c, n[0], {efInCall})
-    if n[0] != nil and n[0].isErrorLike:
-      result = wrapErrorInSubTree(c.config, n)
-      return
-    let t = n[0].typ
-    if t != nil and t.kind in {tyVar, tyLent}:
-      n[0] = newDeref(n[0])
-    elif n[0].kind == nkBracketExpr:
-      let s = bracketedMacro(n[0])
-      if s != nil:
-        setGenericParams(c, n[0])
-        return semDirectOp(c, n, flags)
-
-  discard semOpAux(c, n)
-  var t: PType = nil
-  if n[0].typ != nil:
-    t = skipTypes(n[0].typ, abstractInst+{tyOwned}-{tyTypeDesc, tyDistinct})
-  if t != nil and t.kind == tyProc:
-    # This is a proc variable, apply normal overload resolution
-    let m = resolveIndirectCall(c, n, t)
-    if m.state != csMatch:
-      if c.config.m.errorOutputs == {}:
-        # speed up error generation:
-        globalReport(c.config, n.info, SemReport(kind: rsemTypeMismatch))
-        return c.graph.emptyNode
-      else:
-        var hasErrorType = false
-        for i in 1..<n.len:
-          if n[i].typ.kind == tyError:
-            hasErrorType = true
-            break
-
-        if not hasErrorType:
-          result = c.config.newError(n, reportTyp(
-            rsemCallIndirectTypeMismatch, n[0].typ, ast = n))
-
-        else:
-          # XXX: legacy path, consolidate with nkError
-          result = errorNode(c, n)
-
-        return
-
-      result = nil
-
-    else:
-      result = m.call
-      instGenericConvertersSons(c, result, m)
-
-  elif t != nil and t.kind == tyTypeDesc:
-    if n.len == 1: return semObjConstr(c, n, flags)
-    return semConv(c, n)
-  else:
-    result = overloadedCallOpr(c, n)
-    # Now that nkSym does not imply an iteration over the proc/iterator space,
-    # the old ``prc`` (which is likely an nkIdent) has to be restored:
-    if result == nil:
-      # XXX: hmm, what kind of symbols will end up here?
-      # do we really need to try the overload resolution?
-      n[0] = prc
-      n.flags.incl nfExprCall
-      result = semOverloadedCallAnalyseEffects(c, n, flags)
-      if result == nil: return errorNode(c, n)
-    elif result.kind notin nkCallKinds:
-      # the semExpr() in overloadedCallOpr can even break this condition!
-      # See bug #904 of how to trigger it:
-      return result
-  #result = afterCallActions(c, result, flags)
-  if result.kind == nkError:
-    return # we're done; return the error and move on
-  elif result[0].kind == nkSym:
-    result =
-      if result[0].sym.isError:
-        wrapErrorInSubTree(c.config, result)
-      else:
-        afterCallActions(c, result, flags)
-  else:
-    fixAbstractType(c, result)
-    analyseIfAddressTakenInCall(c, result)
-
 proc semDirectOp(c: PContext, n: PNode, flags: TExprFlags): PNode =
   # this seems to be a hotspot in the compiler!
   #semLazyOpAux(c, n)
@@ -1482,6 +1377,8 @@ proc tryReadingTypeField(c: PContext, n: PNode, i: PIdent, ty: PType): PNode =
 proc builtinFieldAccess(c: PContext, n: PNode, flags: TExprFlags): PNode =
   ## returns nil if it's not a built-in field access
   checkSonsLen(n, 2, c.config)
+  c.config.internalAssert(n.kind == nkDotExpr,
+      "builtInFieldAccess, nkDotExpr expected, given:" & $n.kind)
   # tests/bind/tbindoverload.nim wants an early exit here, but seems to
   # work without now. template/tsymchoicefield doesn't like an early exit
   # here at all!
@@ -1491,7 +1388,8 @@ proc builtinFieldAccess(c: PContext, n: PNode, flags: TExprFlags): PNode =
       suggestExpr(c, n)
       if exactEquals(c.config.m.trackPos, n[1].info): suggestExprNoCheck(c, n)
 
-  var s = qualifiedLookUp(c, n, {checkAmbiguity, checkUndeclared, checkModule})
+  # a fully qualified lookup like a module , eg: `someModule.someProc`
+  let s = qualifiedLookUp(c, n, {checkAmbiguity, checkUndeclared, checkModule})
   if s.isError:
     # XXX: move to propagating nkError, skError, and tyError
     localReport(c.config, s.ast)
@@ -1505,11 +1403,13 @@ proc builtinFieldAccess(c: PContext, n: PNode, flags: TExprFlags): PNode =
     onUse(n[1].info, s)
     return
 
+  # a type field access, eg: `Enum.fooValue` or `var foo: MyType.field`
   n[0] = semExprWithType(c, n[0], flags+{efDetermineType, efWantIterable})
   #restoreOldStyleType(n[0])
-  var i = considerQuotedIdent(c, n[1], n)
-  var ty = n[0].typ
-  var f: PSym = nil
+  var
+    i = considerQuotedIdent(c, n[1], n)
+    ty = n[0].typ
+    f: PSym = nil
   result = nil
 
   if ty.kind == tyTypeDesc:
@@ -1525,7 +1425,7 @@ proc builtinFieldAccess(c: PContext, n: PNode, flags: TExprFlags): PNode =
         return nil
     else:
       return tryReadingTypeField(c, n, i, ty.base)
-  elif isTypeExpr(n.sons[0]):
+  elif isTypeExpr(n[0]):
     return tryReadingTypeField(c, n, i, ty)
   elif ty.kind == tyError:
     # a type error doesn't have any builtin fields
@@ -1588,12 +1488,109 @@ proc dotTransformation(c: PContext, n: PNode): PNode =
     result.add newIdentNode(i, n[1].info)
     result.add copyTree(n[0])
 
-proc semFieldAccess(c: PContext, n: PNode, flags: TExprFlags): PNode =
+proc semFieldAccess(c: PContext, n: PNode, flags: TExprFlags = {}): PNode =
   # this is difficult, because the '.' is used in many different contexts
   # in Nim. We first allow types in the semantic checking.
   result = builtinFieldAccess(c, n, flags)
   if result == nil:
     result = dotTransformation(c, n)
+
+proc semIndirectOp(c: PContext, n: PNode, flags: TExprFlags): PNode =
+  addInNimDebugUtils(c.config, "semIndirectOp", n, result, flags)
+  result = nil
+  checkMinSonsLen(n, 1, c.config)
+  if n.kind == nkError: return n
+  var prc = n[0]
+  if n[0].kind == nkDotExpr:
+    checkSonsLen(n[0], 2, c.config)
+    let n0 = semFieldAccess(c, n[0])
+    case n0.kind
+    of nkDotCall:
+      # it is a static call!
+      result = n0
+      result.transitionSonsKind(nkCall)
+      result.flags.incl nfExplicitCall
+      for i in 1..<n.len: result.add n[i]
+      return semExpr(c, result, flags)
+    of nkError:
+      result = n
+      result[0] = n0
+      return wrapErrorInSubTree(c.config, result)
+    else:
+      n[0] = n0
+  else:
+    n[0] = semExpr(c, n[0], {efInCall})
+    if n[0] != nil and n[0].isErrorLike:
+      result = wrapErrorInSubTree(c.config, n)
+      return
+    let t = n[0].typ
+    if t != nil and t.kind in {tyVar, tyLent}:
+      n[0] = newDeref(n[0])
+    elif n[0].kind == nkBracketExpr:
+      let s = bracketedMacro(n[0])
+      if s != nil:
+        setGenericParams(c, n[0])
+        return semDirectOp(c, n, flags)
+
+  discard semOpAux(c, n)
+  var t: PType = nil
+  if n[0].typ != nil:
+    t = skipTypes(n[0].typ, abstractInst+{tyOwned}-{tyTypeDesc, tyDistinct})
+  if t != nil and t.kind == tyProc:
+    # This is a proc variable, apply normal overload resolution
+    let m = resolveIndirectCall(c, n, t)
+    if m.state != csMatch:
+      if c.config.m.errorOutputs == {}:
+        # speed up error generation:
+        globalReport(c.config, n.info, SemReport(kind: rsemTypeMismatch))
+        return c.graph.emptyNode
+      else:
+        var hasErrorType = false
+        for i in 1..<n.len:
+          if n[i].typ.kind == tyError:
+            hasErrorType = true
+            break
+        if not hasErrorType:
+          result = c.config.newError(n, reportTyp(
+            rsemCallIndirectTypeMismatch, n[0].typ, ast = n))
+        else:
+          # XXX: legacy path, consolidate with nkError
+          result = errorNode(c, n)
+        return
+      result = nil
+    else:
+      result = m.call
+      instGenericConvertersSons(c, result, m)
+  elif t != nil and t.kind == tyTypeDesc:
+    if n.len == 1: return semObjConstr(c, n, flags)
+    return semConv(c, n)
+  else:
+    result = overloadedCallOpr(c, n)
+    # Now that nkSym does not imply an iteration over the proc/iterator space,
+    # the old ``prc`` (which is likely an nkIdent) has to be restored:
+    if result == nil:
+      # XXX: hmm, what kind of symbols will end up here?
+      # do we really need to try the overload resolution?
+      n[0] = prc
+      n.flags.incl nfExprCall
+      result = semOverloadedCallAnalyseEffects(c, n, flags)
+      if result == nil: return errorNode(c, n)
+    elif result.kind notin nkCallKinds:
+      # the semExpr() in overloadedCallOpr can even break this condition!
+      # See bug #904 of how to trigger it:
+      return result
+  #result = afterCallActions(c, result, flags)
+  if result.kind == nkError:
+    return # we're done; return the error and move on
+  elif result[0].kind == nkSym:
+    result =
+      if result[0].sym.isError:
+        wrapErrorInSubTree(c.config, result)
+      else:
+        afterCallActions(c, result, flags)
+  else:
+    fixAbstractType(c, result)
+    analyseIfAddressTakenInCall(c, result)
 
 proc buildOverloadedSubscripts(n: PNode, ident: PIdent): PNode =
   result = newNodeI(nkCall, n.info)

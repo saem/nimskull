@@ -697,6 +697,7 @@ proc treeRepr*(
       of nkError:
         if isNil(conf):
           field("err", substr($n.errorKind(), 4) + style.errKind)
+          hfield("errid", $n.reportId.int + style.err)
 
         else:
           let report = conf.getReport(n).semReport
@@ -711,7 +712,6 @@ proc treeRepr*(
 
       of nkType:
         postLiteral()
-
 
       else:
         discard
@@ -732,7 +732,6 @@ proc treeRepr*(
           continue
 
         aux(subn, idx & newIdx)
-
 
         if idx.len + 1 > rconf.maxDepth:
           break

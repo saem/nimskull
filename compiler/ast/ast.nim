@@ -383,13 +383,17 @@ when defined(useNodeIds):
   const nodeIdToDebug* = -1 # 2322968
   var gNodeId: int
 
+when defined(useNodeIds):
+  proc generateNodeIdForNodeKind*(kind: TNodeKind): int =
+    result = gNodeId
+    inc gNodeId
+    if result == nodeIdToDebug:
+      echo "KIND ", kind
+      writeStackTrace()
+
 template setIdMaybe() =
   when defined(useNodeIds):
-    result.id = gNodeId
-    if result.id == nodeIdToDebug:
-      echo "KIND ", result.kind
-      writeStackTrace()
-    inc gNodeId
+    result.id = generateNodeIdForNodeKind(result.kind)
 
 proc newNodeI*(kind: TNodeKind, info: TLineInfo): PNode =
   ## new node with line info, no type, and no children
@@ -832,8 +836,9 @@ proc copyNode*(src: PNode): PNode =
 
 template transitionNodeKindCommon(k: TNodeKind) =
   let obj {.inject.} = n[]
-  n[] = TNode(kind: k, typ: obj.typ, info: obj.info, flags: obj.flags)
-  # n.comment = obj.comment # shouldn't be needed, the address doesnt' change
+  n[] = TNode(kind: k, typ: obj.typ, info: obj.info, flags: obj.flags,
+              reportId: obj.reportId)
+  # n.comment = obj.comment # shouldn't be needed, the address doesn't change
   when defined(useNodeIds):
     n.id = obj.id
 

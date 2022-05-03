@@ -20,6 +20,7 @@ import
     renderer,
     lineinfos,
     reports,
+    errorreporting,
   ],
   modules/[
     magicsys,
@@ -181,7 +182,10 @@ proc reResolveCallsWithTypedescParams(cl: var TReplTypeVars, n: PNode): PNode =
       if isTypeParam(n[i]): needsFixing = true
     if needsFixing:
       n[0] = newSymNode(n[0].sym.owner)
-      return cl.c.semOverloadedCall(cl.c, n, {skProc, skFunc}, {})
+      result = cl.c.semOverloadedCall(cl.c, n, {skProc, skFunc}, {})
+      if result.isError:
+        localReport(cl.c.config, result)
+      return
 
   for i in 0..<n.safeLen:
     n[i] = reResolveCallsWithTypedescParams(cl, n[i])

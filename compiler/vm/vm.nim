@@ -236,6 +236,7 @@ proc copyValue(src: PNode): PNode =
   result.typ = src.typ
   result.flags = src.flags * PersistentNodeFlags
   result.comment = src.comment
+  result.reportId = src.reportId
   when defined(useNodeIds):
     if result.id == nodeIdToDebug:
       echo "COMES FROM ", src.id

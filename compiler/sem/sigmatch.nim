@@ -2324,7 +2324,6 @@ proc prepareNamedParam(a: PNode; c: PContext) =
       else:
         err
 
-
 proc arrayConstr(c: PContext, n: PNode): PType =
   result = newTypeS(tyArray, c)
   rawAddSon(result, makeRangeType(c, 0, 0, n.info))
@@ -2367,8 +2366,9 @@ proc matchesAux(c: PContext, n: PNode, m: var TCandidate, marker: var IntSet) =
   template noMatchDueToError() =
     ## found an nkError along the way so wrap the call in an error, do not use
     ## if the legacy `localReport`s etc are being used.
-    m.call = wrapErrorInSubTree(c.config, m.call)
-    noMatch()
+    {.line.}:
+      m.call = wrapErrorInSubTree(c.config, m.call)
+      noMatch()
 
   template checkConstraint(n: untyped) {.dirty.} =
     if not formal.constraint.isNil:

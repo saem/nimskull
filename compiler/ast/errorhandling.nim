@@ -94,6 +94,8 @@ proc newError*(
     typ: newType(tyError, ItemId(module: -2, item: -1), nil),
     reportId: report
   )
+  when defined(useNodeIds):
+    result.id = ast.generateNodeIdForNodeKind(nkError)
 
   addInNimDebugUtilsError(conf, wrongNode, result)
 
@@ -145,6 +147,11 @@ template wrapErrorInSubTree*(conf: ConfigRef, wrongNodeContainer: PNode): PNode 
   ## down the tree, this is used to wrap the `wrongNodeContainer` in an nkError
   ## node but no message will be reported for it.
   var e = errorSubNode(wrongNodeContainer)
+  if e == nil:
+    echo "this is where the non-error comes from - start"
+    {.line.}:
+      writeStackTrace()
+    echo "this is where the non-error comes from - end"
   assert e != nil, "there must be an error node within"
   newError(
     conf,
@@ -200,10 +207,15 @@ iterator walkErrors*(config: ConfigRef; n: PNode): PNode =
     if e.errorKind == rsemWrappedError:
       continue
 
-    assert(
-      not e.reportId.isEmpty(),
-      "Error node of kind" & $e.errorKind & "created in " &
-        $n.compilerInstInfo() & " has empty report id")
+    if e.reportId.isEmpty():
+      echo "Error node of kind ", e.errorKind, " created in ",
+        n.compilerInstInfo(), " has empty report id, original node: ",
+        toFileLineCol(config, n.info)
+
+    # assert(
+    #   not e.reportId.isEmpty(),
+    #   "Error node of kind " & $e.errorKind & " created in " &
+    #     $n.compilerInstInfo() & " has empty report id")
 
     yield e
 
