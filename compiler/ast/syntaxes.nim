@@ -53,8 +53,8 @@ proc containsShebang(s: string, i: int): bool =
     result = s[j] == '/'
 
 proc parsePipe(filename: AbsoluteFile, inputStream: PLLStream; cache: IdentCache;
-               config: ConfigRef): PNode =
-  result = newNode(nkEmpty)
+               config: ConfigRef): ParsedNode =
+  result = newNode(pnkEmpty)
   var s = llStreamOpen(filename, fmRead)
   if s != nil:
     var line = newStringOfCap(80)
@@ -83,15 +83,15 @@ proc getFilter(ident: PIdent): FilterKind =
     if cmpIgnoreStyle(ident.s, $i) == 0:
       return i
 
-proc getCallee(conf: ConfigRef; n: PNode): PIdent =
-  if n.kind in nkCallKinds and n[0].kind == nkIdent:
+proc getCallee(conf: ConfigRef; n: ParsedNode): PIdent =
+  if n.kind in pnkCallKinds and n[0].kind == pnkIdent:
     result = n[0].ident
-  elif n.kind == nkIdent:
+  elif n.kind == pnkIdent:
     result = n.ident
   else:
     conf.localReport(n.info, ParserReport(kind: rparInvalidFilter, node: n))
 
-proc applyFilter(p: var Parser, n: PNode, filename: AbsoluteFile,
+proc applyFilter(p: var Parser, n: ParsedNode, filename: AbsoluteFile,
                  stdin: PLLStream): PLLStream =
   var f = getFilter(getCallee(p.lex.config, n))
   result = case f
@@ -109,18 +109,18 @@ proc applyFilter(p: var Parser, n: PNode, filename: AbsoluteFile,
       p.lex.config.localReport LexerReport(
         kind: rlexSyntaxesCode, msg: result.s)
 
-proc evalPipe(p: var Parser, n: PNode, filename: AbsoluteFile,
+proc evalPipe(p: var Parser, n: ParsedNode, filename: AbsoluteFile,
               start: PLLStream): PLLStream =
   assert p.lex.config != nil
   result = start
-  if n.kind == nkEmpty: return
-  if n.kind == nkInfix and n[0].kind == nkIdent and n[0].ident.s == "|":
+  if n.kind == pnkEmpty: return
+  if n.kind == pnkInfix and n[0].kind == pnkIdent and n[0].ident.s == "|":
     for i in 1..2:
-      if n[i].kind == nkInfix:
+      if n[i].kind == pnkInfix:
         result = evalPipe(p, n[i], filename, result)
       else:
         result = applyFilter(p, n[i], filename, result)
-  elif n.kind == nkStmtList:
+  elif n.kind == pnkStmtList:
     result = evalPipe(p, n[0], filename, result)
   else:
     result = applyFilter(p, n, filename, result)
@@ -146,7 +146,8 @@ proc setupParser*(p: var Parser; fileIdx: FileIndex; cache: IdentCache;
   openParser(p, fileIdx, llStreamOpen(f), cache, config)
   result = true
 
-proc parseFile*(fileIdx: FileIndex; cache: IdentCache; config: ConfigRef): PNode =
+proc parseFile*(fileIdx: FileIndex; cache: IdentCache;
+                config: ConfigRef): ParsedNode =
   var p: Parser
   if setupParser(p, fileIdx, cache, config):
     result = parseAll(p)

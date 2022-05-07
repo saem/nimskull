@@ -33,6 +33,101 @@ type
     ccNoConvention = "noconv"       ## needed for generating proper C procs sometimes
 
 type
+  ParsedNodeKind* {.pure.} = enum
+    pnkError, pnkEmpty,
+    pnkIdent
+
+    pnkCharLit,
+    pnkIntLit, pnkInt8Lit, pnkInt16Lit, pnkInt32Lit, pnkInt64Lit,
+    pnkUIntLit, pnkUInt8Lit, pnkUInt16Lit, pnkUInt32Lit, pnkUInt64Lit,
+    pnkFloatLit, pnkFloat32Lit, pnkFloat64Lit, pnkFloat128Lit,
+    pnkStrLit, pnkRStrLit, pnkTripleStrLit,
+    pnkNilLit,
+
+    pnkCall, pnkCommand, pnkCallStrLit, pnkInfix, pnkPrefix, pnkPostfix,
+
+    pnkExprEqExpr, pnkExprColonExpr, pnkIdentDefs, pnkConstDef, pnkVarTuple, pnkPar,
+    pnkBracket, pnkCurly, pnkTupleConstr, pnkObjConstr, pnkTableConstr,
+    pnkBracketExpr, pnkCurlyExpr,
+
+    pnkPragmaExpr, pnkPragma, pnkPragmaBlock,
+
+    pnkDotExpr, pnkAccQuoted,
+
+    pnkIfExpr, pnkIfStmt, pnkElifBranch, pnkElifExpr, pnkElse, pnkElseExpr,
+    pnkCaseStmt, pnkOfBranch,
+    pnkWhenStmt,
+
+    pnkForStmt, pnkWhileStmt,
+
+    pnkBlockExpr, pnkBlockStmt,
+
+    pnkDiscardStmt, pnkContinueStmt, pnkBreakStmt, pnkReturnStmt, pnkRaiseStmt,
+    pnkYieldStmt,
+
+    pnkTryStmt, pnkExceptBranch, pnkFinally,
+
+    pnkDefer,
+
+    pnkLambda, pnkDo,
+
+    pnkBind, pnkBindStmt, pnkMixinStmt,
+
+    pnkCast,
+    pnkStaticStmt,
+
+    pnkAsgn,
+
+    pnkGenericParams,
+    pnkFormalParams,
+
+    pnkStmtList, pnkStmtListExpr,
+
+    pnkImportStmt, pnkImportExceptStmt, pnkImportAs, pnkFromStmt,
+
+    pnkIncludeStmt,
+
+    pnkExportStmt, pnkExportExceptStmt,
+
+    pnkConstSection, pnkLetSection, pnkVarSection,
+
+    pnkProcDef, pnkFuncDef, pnkMethodDef, pnkConverterDef, pnkIteratorDef,
+    pnkMacroDef, pnkTemplateDef,
+
+    pnkTypeSection, pnkTypeDef,
+
+    pnkEnumTy, pnkEnumFieldDef,
+
+    pnkObjectTy, pnkTupleTy, pnkProcTy, pnkIteratorTy,
+
+    pnkRecList, pnkRecCase, pnkRecWhen,
+
+    pnkTypeOfExpr,
+
+    # pnkConstTy,
+    pnkRefTy, pnkVarTy, pnkPtrTy, pnkStaticTy, pnkDistinctTy,
+    pnkMutableTy,
+
+    pnkTupleClassTy, pnkTypeClassTy,
+
+    pnkOfInherit,
+
+    pnkArgList,
+
+    pnkWith, pnkWithout,
+
+    pnkAsmStmt,
+    pnkCommentStmt,
+
+    pnkUsingStmt,
+
+const
+  pnkProcDefs* = {pnkLambda, pnkDo, pnkProcDef, pnkFuncDef, pnkMethodDef,
+                  pnkIteratorDef, pnkConverterDef}
+  pnkCallKinds* = {pnkCall, pnkInfix, pnkPrefix, pnkPostfix,
+                  pnkCommand, pnkCallStrLit}
+
+type
   TNodeKind* = enum
     ## order is important, because ranges are used to check whether a node
     ## belongs to a certain class
@@ -233,6 +328,137 @@ type
 
   TNodeKinds* = set[TNodeKind]
 
+template toNodeKind*(kind: TNodeKind): TNodeKind = kind
+  ## no-op, works with the func version to act as a seamless conversion
+
+func toNodeKind*(kind: ParsedNodeKind): TNodeKind =
+  case kind
+  of pnkError: nkError
+  of pnkEmpty: nkEmpty
+  of pnkIdent: nkIdent
+  of pnkCharLit: nkCharLit
+  of pnkIntLit: nkIntLit
+  of pnkInt8Lit: nkInt8Lit
+  of pnkInt16Lit: nkInt16Lit
+  of pnkInt32Lit: nkInt32Lit
+  of pnkInt64Lit: nkInt64Lit
+  of pnkUIntLit: nkUIntLit
+  of pnkUInt8Lit: nkUInt8Lit
+  of pnkUInt16Lit: nkUInt16Lit
+  of pnkUInt32Lit: nkUInt32Lit
+  of pnkUInt64Lit: nkUInt64Lit
+  of pnkFloatLit: nkFloatLit
+  of pnkFloat32Lit: nkFloat32Lit
+  of pnkFloat64Lit: nkFloat64Lit
+  of pnkFloat128Lit: nkFloat128Lit
+  of pnkStrLit: nkStrLit
+  of pnkRStrLit: nkRStrLit
+  of pnkTripleStrLit: nkTripleStrLit
+  of pnkNilLit: nkNilLit
+  of pnkCall: nkCall
+  of pnkCommand: nkCommand
+  of pnkCallStrLit: nkCallStrLit
+  of pnkInfix: nkInfix
+  of pnkPrefix: nkPrefix
+  of pnkPostfix: nkPostfix
+  of pnkExprEqExpr: nkExprEqExpr
+  of pnkExprColonExpr: nkExprColonExpr
+  of pnkIdentDefs: nkIdentDefs
+  of pnkConstDef: nkConstDef
+  of pnkVarTuple: nkVarTuple
+  of pnkPar: nkPar
+  of pnkBracket: nkBracket
+  of pnkCurly: nkCurly
+  of pnkTupleConstr: nkTupleConstr
+  of pnkObjConstr: nkObjConstr
+  of pnkTableConstr: nkTableConstr
+  of pnkBracketExpr: nkBracketExpr
+  of pnkCurlyExpr: nkCurlyExpr
+  of pnkPragmaExpr: nkPragmaExpr
+  of pnkPragma: nkPragma
+  of pnkPragmaBlock: nkPragmaBlock
+  of pnkDotExpr: nkDotExpr
+  of pnkAccQuoted: nkAccQuoted
+  of pnkIfExpr: nkIfExpr
+  of pnkIfStmt: nkIfStmt
+  of pnkElifBranch: nkElifBranch
+  of pnkElifExpr: nkElifExpr
+  of pnkElse: nkElse
+  of pnkElseExpr: nkElseExpr
+  of pnkCaseStmt: nkCaseStmt
+  of pnkOfBranch: nkOfBranch
+  of pnkWhenStmt: nkWhenStmt
+  of pnkForStmt: nkForStmt
+  of pnkWhileStmt: nkWhileStmt
+  of pnkBlockExpr: nkBlockExpr
+  of pnkBlockStmt: nkBlockStmt
+  of pnkDiscardStmt: nkDiscardStmt
+  of pnkContinueStmt: nkContinueStmt
+  of pnkBreakStmt: nkBreakStmt
+  of pnkReturnStmt: nkReturnStmt
+  of pnkRaiseStmt: nkRaiseStmt
+  of pnkYieldStmt: nkYieldStmt
+  of pnkTryStmt: nkTryStmt
+  of pnkExceptBranch: nkExceptBranch
+  of pnkFinally: nkFinally
+  of pnkDefer: nkDefer
+  of pnkLambda: nkLambda
+  of pnkDo: nkDo
+  of pnkBind: nkBind
+  of pnkBindStmt: nkBindStmt
+  of pnkMixinStmt: nkMixinStmt
+  of pnkCast: nkCast
+  of pnkStaticStmt: nkStaticStmt
+  of pnkAsgn:nkAsgn
+  of pnkGenericParams: nkGenericParams
+  of pnkFormalParams: nkFormalParams
+  of pnkStmtList: nkStmtList
+  of pnkStmtListExpr: nkStmtListExpr
+  of pnkImportStmt: nkImportStmt
+  of pnkImportExceptStmt: nkImportExceptStmt
+  of pnkImportAs: nkImportAs
+  of pnkFromStmt: nkFromStmt
+  of pnkIncludeStmt: nkIncludeStmt
+  of pnkExportStmt: nkExportStmt
+  of pnkExportExceptStmt: nkExportExceptStmt
+  of pnkConstSection: nkConstSection
+  of pnkLetSection: nkLetSection
+  of pnkVarSection: nkVarSection
+  of pnkProcDef: nkProcDef
+  of pnkFuncDef: nkFuncDef
+  of pnkMethodDef: nkMethodDef
+  of pnkConverterDef: nkConverterDef
+  of pnkIteratorDef: nkIteratorDef
+  of pnkMacroDef: nkMacroDef
+  of pnkTemplateDef: nkTemplateDef
+  of pnkTypeSection: nkTypeSection
+  of pnkTypeDef: nkTypeDef
+  of pnkEnumTy: nkEnumTy
+  of pnkEnumFieldDef: nkEnumFieldDef
+  of pnkObjectTy: nkObjectTy
+  of pnkTupleTy: nkTupleTy
+  of pnkProcTy: nkProcTy
+  of pnkIteratorTy: nkIteratorTy
+  of pnkRecList: nkRecList
+  of pnkRecCase: nkRecCase
+  of pnkRecWhen: nkRecWhen
+  of pnkTypeOfExpr: nkTypeOfExpr
+  of pnkRefTy: nkRefTy
+  of pnkVarTy: nkVarTy
+  of pnkPtrTy: nkPtrTy
+  of pnkStaticTy: nkStaticTy
+  of pnkDistinctTy: nkDistinctTy
+  of pnkMutableTy: nkMutableTy
+  of pnkTupleClassTy: nkTupleClassTy
+  of pnkTypeClassTy: nkTypeClassTy
+  of pnkOfInherit: nkOfInherit
+  of pnkArgList: nkArgList
+  of pnkWith: nkWith
+  of pnkWithout: nkWithout
+  of pnkAsmStmt: nkAsmStmt
+  of pnkCommentStmt: nkCommentStmt
+  of pnkUsingStmt: nkUsingStmt
+
 type
   TSymFlag* = enum    # 48 flags!
     sfUsed            ## read access of sym (for warnings) or simply used
@@ -340,7 +566,9 @@ const
 const
   # getting ready for the future expr/stmt merge
   nkWhen* = nkWhenStmt
+  pnkWhen* = pnkWhenStmt
   nkWhenExpr* = nkWhenStmt
+  pnkWhenExpr* = pnkWhenStmt
   nkEffectList* = nkArgList
   # hacks ahead: an nkEffectList is a node with 4 children:
   exceptionEffects* = 0 ## exceptions at position 0
@@ -477,6 +705,15 @@ const
 
 
 type
+  ParsedNodeFlag* {.pure.} = enum
+    pnfHasComment
+    pnfBase2
+    pnfBase8
+    pnfBase16
+    pnfBlockArg
+
+  ParsedNodeFlags* = set[ParsedNodeFlag]
+  
   TTypeKinds* = set[TTypeKind]
 
   TNodeFlag* = enum
@@ -773,6 +1010,23 @@ proc hash*(x: ItemId): Hash =
 
 
 type
+  ParsedNode* = ref ParsedNodeObj
+  ParsedNodeObj* {.final, acyclic.} = object
+    id*: int
+    info*: TLineInfo
+    flags*: ParsedNodeFlags
+    case kind*: ParsedNodeKind
+    of pnkCharLit..pnkUInt64Lit:
+      intVal*: BiggestInt
+    of pnkFloatLit..pnkFloat128Lit:
+      floatVal*: BiggestFloat
+    of pnkStrLit..pnkTripleStrLit:
+      strVal*: string
+    of pnkIdent:
+      ident*: PIdent
+    else:
+      sons*: seq[ParsedNode]
+
   TIdObj* {.acyclic.} = object of RootObj
     itemId*: ItemId
   PIdObj* = ref TIdObj
@@ -795,8 +1049,7 @@ type
     h*: Hash ## hash value of s
 
   TNode*{.final, acyclic.} = object # on a 32bit machine, this takes 32 bytes
-    when defined(useNodeIds):
-      id*: int
+    id*: int
     typ*: PType
     info*: TLineInfo
     flags*: TNodeFlags

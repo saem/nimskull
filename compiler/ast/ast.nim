@@ -30,26 +30,27 @@ import
 
 export ast_types, int128
 
-template nodeId(n: PNode): int = cast[int](n)
-
 type Gconfig = object
   ## we put comments in a side channel to avoid increasing `sizeof(TNode)`,
   ## which reduces memory usage given that `PNode` is the most allocated
   ## type by far.
-  comments: Table[int, string] # nodeId => comment
+  comments: Table[int, string] # node.id => comment
   useIc*: bool
 
-var gconfig {.threadvar.}: Gconfig
+var
+  gconfig {.threadvar.}: Gconfig
+  gNodeId: int
 
 proc setUseIc*(useIc: bool) = gconfig.useIc = useIc
 
-proc comment*(n: PNode): string =
-  if nfHasComment in n.flags and not gconfig.useIc:
-    # IC doesn't track comments, see `packed_ast`, so this could fail
-    result = gconfig.comments[n.nodeId]
+proc comment*(n: PNode | ParsedNode): string =
+  if not gconfig.useIc:
+    if (when n is PNode: nfHasComment else: pnfHasComment) in n.flags:
+      # IC doesn't track comments, see `packed_ast`, so this could fail
+      result = gconfig.comments[n.id]
 
-proc `comment=`*(n: PNode, a: string) =
-  let id = n.nodeId
+proc `comment=`*(n: PNode | ParsedNode, a: string) =
+  let id = n.id
   if a.len > 0:
     # if needed, we could periodically cleanup gconfig.comments when its size increases,
     # to ensure only live nodes (and with nfHasComment) have an entry in gconfig.comments;
@@ -57,10 +58,16 @@ proc `comment=`*(n: PNode, a: string) =
     # num calls to newNodeImpl: 14984160 (num of PNode allocations)
     # size of gconfig.comments: 33585
     # num of nodes with comments that were deleted and hence wasted: 3081
-    n.flags.incl nfHasComment
+    when n is PNode:
+      n.flags.incl nfHasComment
+    else:
+      n.flags.incl pnfHasComment
     gconfig.comments[id] = a
-  elif nfHasComment in n.flags:
-    n.flags.excl nfHasComment
+  elif (when n is PNode: nfHasComment else: pnfHasComment) in n.flags:
+    when n is PNode:
+      n.flags.excl nfHasComment
+    else:
+      n.flags.excl pnfHasComment
     gconfig.comments.del(id)
 
 # BUGFIX: a module is overloadable so that a proc can have the
@@ -314,25 +321,88 @@ var ggDebug* {.deprecated.}: bool ## convenience switch for trying out things
 #var
 #  gMainPackageId*: int
 
+when defined(useNodeIds):
+  const nodeIdToDebug* = -1 # 2322968
+
+template setId() =
+  inc gNodeId
+  result.id = gNodeId
+  when defined(useNodeIds):
+    if result.id == nodeIdToDebug:
+      echo "KIND ", result.kind
+      writeStackTrace()
+
+# =============================================================================
+# ParsedNode related things Start
+# =============================================================================
+
+proc newNodeI*(kind: ParsedNodeKind, info: TLineInfo): ParsedNode =
+  ## new parsed node with line info and no children
+  result = ParsedNode(kind: kind, info: info)
+
+proc newNode*(kind: ParsedNodeKind): ParsedNode =
+  ## new parsed node with unknown line info and no children
+  result = newNodeI(kind, unknownLineInfo)
+
+proc newProcNode*(kind: ParsedNodeKind, info: TLineInfo, body,
+                 params,
+                 name, pattern, genericParams,
+                 pragmas, exceptions: ParsedNode): ParsedNode =
+  result = newNodeI(kind, info)
+  result.sons = @[name, pattern, genericParams, params,
+                  pragmas, exceptions, body]
+
+proc newTreeI*(kind: ParsedNodeKind; info: TLineInfo;
+               children: varargs[ParsedNode]): ParsedNode =
+  result = newNodeI(kind, info)
+  result.sons = @children
+
+template transitionNodeKindCommon(k: ParsedNodeKind) =
+  let obj {.inject.} = n[]
+  n[] = ParsedNodeObj(id: obj.id, kind: k, info: obj.info, flags: obj.flags)
+  # n.comment = obj.comment # shouldn't be needed, the address doesn't change
+
+proc transitionSonsKind*(n: ParsedNode, kind: range[pnkCall..pnkUsingStmt]) =
+  transitionNodeKindCommon(kind)
+  n.sons = obj.sons
+
+# =============================================================================
+# ParsedNode related things End
+# =============================================================================
+
 proc isCallExpr*(n: PNode): bool =
   result = n.kind in nkCallKinds
 
 proc discardSons*(father: PNode)
 
-type Indexable = PNode | PType
+type Indexable = PNode | PType | ParsedNode
 
 proc len*(n: Indexable): int {.inline.} =
   result = n.sons.len
 
-proc safeLen*(n: PNode): int {.inline.} =
+proc safeLen*[T: PNode|ParsedNode](n: T): int {.inline.} =
   ## works even for leaves.
-  if n.kind in {nkNone..nkNilLit}: result = 0
+  const nodeKindWithChildren =
+    when n is PNode:
+      {nkNone..nkNilLit}
+    else:
+      {pnkEmpty..pnkNilLit}
+
+  if n.kind in nodeKindWithChildren: result = 0
   else: result = n.len
 
-proc safeArrLen*(n: PNode): int {.inline.} =
+proc safeArrLen*[T: PNode|ParsedNode](n: T): int {.inline.} =
   ## works for array-like objects (strings passed as openArray in VM).
-  if n.kind in {nkStrLit..nkTripleStrLit}: result = n.strVal.len
-  elif n.kind in {nkNone..nkFloat128Lit}: result = 0
+  when n is PNode:
+    const
+      strLitKinds = {nkStrLit..nkTripleStrLit}
+      childlessKinds = {nkNone..nkFloat128Lit}
+  else:
+    const
+      strLitKinds = {pnkStrLit..pnkTripleStrLit}
+      childlessKinds = {pnkEmpty..pnkNilLit} - {pnkStrLit..pnkTripleStrLit}
+  if n.kind in strLitKinds: result = n.strVal.len
+  elif n.kind in childlessKinds: result = 0
   else: result = n.len
 
 proc add*(father, son: Indexable) =
@@ -379,18 +449,6 @@ proc getDeclPragma*(n: PNode): PNode =
   if result != nil:
     assert result.kind == nkPragma, $(result.kind, n.kind)
 
-when defined(useNodeIds):
-  const nodeIdToDebug* = -1 # 2322968
-  var gNodeId: int
-
-template setIdMaybe() =
-  when defined(useNodeIds):
-    result.id = gNodeId
-    if result.id == nodeIdToDebug:
-      echo "KIND ", result.kind
-      writeStackTrace()
-    inc gNodeId
-
 proc newNodeI*(kind: TNodeKind, info: TLineInfo): PNode =
   ## new node with line info, no type, and no children
   result = PNode(kind: kind, info: info, reportId: emptyReportId)
@@ -402,7 +460,7 @@ proc newNodeI*(kind: TNodeKind, info: TLineInfo): PNode =
     # can contain extra entries for deleted PNode's with comments.
     gconfig.comments.del(cast[int](result))
 
-  setIdMaybe()
+  setId()
 
 proc newNode*(kind: TNodeKind): PNode =
   ## new node with unknown line info, no type, and no children
@@ -832,10 +890,9 @@ proc copyNode*(src: PNode): PNode =
 
 template transitionNodeKindCommon(k: TNodeKind) =
   let obj {.inject.} = n[]
-  n[] = TNode(kind: k, typ: obj.typ, info: obj.info, flags: obj.flags)
+  n[] = TNode(id: obj.id, kind: k, typ: obj.typ, info: obj.info,
+              flags: obj.flags)
   # n.comment = obj.comment # shouldn't be needed, the address doesnt' change
-  when defined(useNodeIds):
-    n.id = obj.id
 
 proc transitionSonsKind*(n: PNode, kind: range[nkComesFrom..nkTupleConstr]) =
   transitionNodeKindCommon(kind)
@@ -1080,10 +1137,10 @@ proc requiredParams*(s: PSym): int =
 proc hasPattern*(s: PSym): bool {.inline.} =
   result = isRoutine(s) and s.ast[patternPos].kind != nkEmpty
 
-iterator items*(n: PNode): PNode =
+iterator items*[T: PNode|ParsedNode](n: T): T =
   for i in 0..<n.safeLen: yield n[i]
 
-iterator pairs*(n: PNode): tuple[i: int, n: PNode] =
+iterator pairs*[T: PNode|ParsedNode](n: T): tuple[i: int, n: T] =
   for i in 0..<n.safeLen: yield (i, n[i])
 
 proc isAtom*(n: PNode): bool {.inline.} =
@@ -1271,6 +1328,15 @@ proc toHumanStr*(kind: TTypeKind): string =
 proc skipAddr*(n: PNode): PNode {.inline.} =
   (if n.kind == nkHiddenAddr: n[0] else: n)
 
-proc isNewStyleConcept*(n: PNode): bool {.inline.} =
-  assert n.kind == nkTypeClassTy
-  result = n[0].kind == nkEmpty
+proc isNewStyleConcept*(n: PNode | ParsedNode): bool {.inline.} =
+  when n is PNode:
+    const
+      assertKind = nkTypeClassTy
+      emptyKind = nkEmpty
+  else:
+    const
+      assertKind = pnkTypeClassTy
+      emptyKind = pnkEmpty
+
+  assert n.kind == assertKind
+  result = n[0].kind == emptyKind

@@ -99,13 +99,12 @@ type
       else:
         discard
 
-
-
 func severity*(rep: LexerReport): ReportSeverity =
   case LexerReportKind(rep.kind):
     of rlexHintKinds: rsevHint
     of rlexErrorKinds: rsevError
     of rlexWarningKinds: rsevWarning
+
 
 type
   ParserReport* = object of ReportBase
@@ -116,18 +115,17 @@ type
         expected*: seq[string]
 
       of rparInvalidFilter:
-        node*: PNode
+        node*: ParsedNode
 
       else:
         discard
-
-
 
 func severity*(parser: ParserReport): ReportSeverity =
   case ParserReportKind(parser.kind):
     of rparHintKinds: rsevHint
     of rparWarningKinds: rsevWarning
     of rparErrorKinds: rsevError
+
 
 type
   SemGcUnsafetyKind* = enum
@@ -317,7 +315,6 @@ type
          rsemDifferentTypeForReintroducedSymbol:
         typeMismatch*: seq[SemTypeMismatch]
 
-
       of rsemSymbolKindMismatch:
         expectedSymbolKind*: set[TSymKind]
 
@@ -336,8 +333,6 @@ type
       of rsemStaticOutOfBounds, rsemVmIndexError:
         indexSpec*: tuple[usedIdx, minIdx, maxIdx: Int128]
 
-
-
       of rsemProcessing:
         processing*: tuple[
           isNimscript: bool,
@@ -355,7 +350,6 @@ type
 
       else:
         discard
-
 
 func severity*(report: SemReport): ReportSeverity =
   case SemReportKind(report.kind):
@@ -382,6 +376,14 @@ proc reportSymbols*(
   result.typ = typ
 
 func reportSem*(kind: ReportKind): SemReport = SemReport(kind: kind)
+
+func reportAst*(kind: ReportKind, node: ParsedNode, msg = ""): ParserReport =
+  result = ParserReport(kind: kind, msg: msg)
+  case result.kind
+  of rparInvalidFilter:
+    result.node = node
+  else:
+    discard
 
 func reportAst*(
     kind: ReportKind,
@@ -672,7 +674,6 @@ type
         discard
 
 
-
 func severity*(report: InternalReport): ReportSeverity =
   case InternalReportKind(report.kind):
     of rintFatalKinds:    rsevFatal
@@ -680,8 +681,6 @@ func severity*(report: InternalReport): ReportSeverity =
     of rintWarningKinds:  rsevWarning
     of rintErrorKinds:    rsevError
     of rintDataPassKinds: rsevTrace
-
-
 
 
 type

@@ -217,7 +217,7 @@ proc parseLine(p: var TTmplParser) =
     llStreamWrite(p.outp, "\\n\"")
 
 proc filterTmpl*(conf: ConfigRef, stdin: PLLStream, filename: AbsoluteFile,
-                 call: PNode): PLLStream =
+                 call: ParsedNode): PLLStream =
   var p: TTmplParser
   p.config = conf
   p.info = newLineInfo(conf, filename, 0, 0)

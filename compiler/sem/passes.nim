@@ -191,7 +191,7 @@ proc processModule*(graph: ModuleGraph; module: PSym; idgen: IdGenerator;
         sl.add n
         while true:
           var n = parseTopLevelStmt(p)
-          if n.kind == nkEmpty: break
+          if n.kind == pnkEmpty: break
           sl.add n
         discard processTopLevelStmt(graph, sl, a)
         break

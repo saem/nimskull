@@ -121,18 +121,17 @@ when false:
       localReport(pkg.info, "package name must be an identifier or string literal")
       result = ""
 
-proc getModuleName*(conf: ConfigRef; n: PNode): string =
+proc getModuleName*(conf: ConfigRef; n: PNode|ParsedNode): string =
   # This returns a short relative module name without the nim extension
   # e.g. like "system", "importer" or "somepath/module"
   # The proc won't perform any checks that the path is actually valid
-  case n.kind
+  case n.kind.toNodeKind
   of nkStrLit, nkRStrLit, nkTripleStrLit:
     try:
       result = pathSubs(conf, n.strVal, toFullPath(conf, n.info).splitFile().dir)
     except ValueError:
       conf.localReport(n.info, reportAst(rsemInvalidModulePath, n))
       result = n.strVal
-
   of nkIdent:
     result = n.ident.s
   of nkSym:
@@ -170,7 +169,7 @@ proc getModuleName*(conf: ConfigRef; n: PNode): string =
     conf.localReport(n.info, reportAst(rsemInvalidModuleName, n))
     result = ""
 
-proc checkModuleName*(conf: ConfigRef; n: PNode; doLocalError=true): FileIndex =
+proc checkModuleName*(conf: ConfigRef; n: PNode|ParsedNode; doLocalError=true): FileIndex =
   # This returns the full canonical path for a given module import
   let modulename = getModuleName(conf, n)
   let fullPath = findModule(conf, modulename, toFullPath(conf, n.info))
