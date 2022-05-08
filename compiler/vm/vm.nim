@@ -1899,13 +1899,14 @@ proc rawExecute(c: var TCtx, pc: var int, tos: var StackFrameIndex): TFullReg =
           return oldHook(conf, report)
 
       try:
-        ast = parseString(
-          regs[rb].node.strVal,
-          c.cache,
-          c.config,
-          toFullPath(c.config, c.debug[pc]),
-          c.debug[pc].line.int
-        )
+        ast = toPNode:
+          parseString(
+            regs[rb].node.strVal,
+            c.cache,
+            c.config,
+            toFullPath(c.config, c.debug[pc]),
+            c.debug[pc].line.int
+          )
 
       except TemporaryExceptionHack:
         discard

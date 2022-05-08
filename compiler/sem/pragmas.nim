@@ -1143,9 +1143,9 @@ proc prepareSinglePragma(
   of nkCast:
     result =
       if comesFromPush:
-        c.config.newError(n, reportAst(rsemCannotPushCast, nil))
+        c.config.newError(n, reportAst(rsemCannotPushCast, PNode nil))
       elif not isStatement:
-        c.config.newError(n, reportAst(rsemCastRequiresStatement, nil))
+        c.config.newError(n, reportAst(rsemCastRequiresStatement, PNode nil))
       elif whichPragma(key[1]) in {wRaises, wTags}:
         pragmaRaisesOrTags(c, key[1])
       else:

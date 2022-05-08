@@ -110,13 +110,10 @@ type
   ParserReport* = object of ReportBase
     msg*: string
     found*: string
+    node*: ParsedNode
     case kind*: ReportKind
       of rparIdentExpected .. rparUnexpectedToken:
         expected*: seq[string]
-
-      of rparInvalidFilter:
-        node*: ParsedNode
-
       else:
         discard
 
@@ -378,12 +375,7 @@ proc reportSymbols*(
 func reportSem*(kind: ReportKind): SemReport = SemReport(kind: kind)
 
 func reportAst*(kind: ReportKind, node: ParsedNode, msg = ""): ParserReport =
-  result = ParserReport(kind: kind, msg: msg)
-  case result.kind
-  of rparInvalidFilter:
-    result.node = node
-  else:
-    discard
+  result = ParserReport(kind: kind, msg: msg, node: node)
 
 func reportAst*(
     kind: ReportKind,

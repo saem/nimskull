@@ -339,6 +339,7 @@ template setId() =
 proc newNodeI*(kind: ParsedNodeKind, info: TLineInfo): ParsedNode =
   ## new parsed node with line info and no children
   result = ParsedNode(kind: kind, info: info)
+  setId()
 
 proc newNode*(kind: ParsedNodeKind): ParsedNode =
   ## new parsed node with unknown line info and no children
@@ -356,6 +357,10 @@ proc newTreeI*(kind: ParsedNodeKind; info: TLineInfo;
                children: varargs[ParsedNode]): ParsedNode =
   result = newNodeI(kind, info)
   result.sons = @children
+
+proc newStrNode*(kind: ParsedNodeKind, strVal: string): ParsedNode =
+  result = newNode(kind)
+  result.strVal = strVal
 
 template transitionNodeKindCommon(k: ParsedNodeKind) =
   let obj {.inject.} = n[]
@@ -382,13 +387,13 @@ proc len*(n: Indexable): int {.inline.} =
 
 proc safeLen*[T: PNode|ParsedNode](n: T): int {.inline.} =
   ## works even for leaves.
-  const nodeKindWithChildren =
+  const nodeKindWithoutChildren =
     when n is PNode:
       {nkNone..nkNilLit}
     else:
       {pnkEmpty..pnkNilLit}
 
-  if n.kind in nodeKindWithChildren: result = 0
+  if n.kind in nodeKindWithoutChildren: result = 0
   else: result = n.len
 
 proc safeArrLen*[T: PNode|ParsedNode](n: T): int {.inline.} =
@@ -1142,6 +1147,32 @@ iterator items*[T: PNode|ParsedNode](n: T): T =
 
 iterator pairs*[T: PNode|ParsedNode](n: T): tuple[i: int, n: T] =
   for i in 0..<n.safeLen: yield (i, n[i])
+
+proc toPNode*(n: ParsedNode): PNode =
+  result = newNodeI(n.kind.toNodeKind, n.info)
+
+  for f in n.flags:
+    case f
+    of pnfHasComment: result.flags.incl nfHasComment
+    of pnfBase2: result.flags.incl nfBase2
+    of pnfBase8: result.flags.incl nfBase8
+    of pnfBase16: result.flags.incl nfBase16
+    of pnfBlockArg: result.flags.incl nfBlockArg
+
+  result.comment = n.comment
+
+  case n.kind
+  of pnkCharLit..pnkUInt64Lit:
+    result.intVal = n.intVal
+  of pnkFloatLit..pnkFloat128Lit:
+    result.floatVal = n.floatVal
+  of pnkStrLit..pnkTripleStrLit:
+    result.strVal = n.strVal
+  of pnkIdent:
+    result.ident = n.ident
+  else:
+    for kid in n.items:
+      result.add toPNode(kid)
 
 proc isAtom*(n: PNode): bool {.inline.} =
   result = n.kind >= nkNone and n.kind <= nkNilLit

@@ -84,9 +84,9 @@ proc closePasses(graph: ModuleGraph; a: var TPassContextArray) =
       m = graph.passes[i].close(graph, a[i], m)
     a[i] = nil                # free the memory here
 
-proc processTopLevelStmt(graph: ModuleGraph, n: PNode, a: var TPassContextArray): bool =
+proc processTopLevelStmt(graph: ModuleGraph, n: ParsedNode, a: var TPassContextArray): bool =
   # this implements the code transformation pipeline
-  var m = n
+  var m = toPNode(n)
   for i in 0..<graph.passes.len:
     if not isNil(graph.passes[i].process):
       m = graph.passes[i].process(a[i], m)
@@ -100,7 +100,7 @@ proc resolveMod(conf: ConfigRef; module, relativeTo: string): FileIndex =
   else:
     result = fileInfoIdx(conf, fullPath)
 
-proc processImplicits(graph: ModuleGraph; implicits: seq[string], nodeKind: TNodeKind,
+proc processImplicits(graph: ModuleGraph; implicits: seq[string], nodeKind: ParsedNodeKind,
                       a: var TPassContextArray; m: PSym) =
   # XXX fixme this should actually be relative to the config file!
   let relativeTo = toFullPath(graph.config, m.info)
@@ -108,15 +108,15 @@ proc processImplicits(graph: ModuleGraph; implicits: seq[string], nodeKind: TNod
     # implicit imports should not lead to a module importing itself
     if m.position != resolveMod(graph.config, module, relativeTo).int32:
       var importStmt = newNodeI(nodeKind, m.info)
-      var str = newStrNode(nkStrLit, module)
+      var str = newStrNode(pnkStrLit, module)
       str.info = m.info
       importStmt.add str
       if not processTopLevelStmt(graph, importStmt, a): break
 
 const
-  imperativeCode = {low(TNodeKind)..high(TNodeKind)} - {nkTemplateDef, nkProcDef, nkMethodDef,
-    nkMacroDef, nkConverterDef, nkIteratorDef, nkFuncDef, nkPragma,
-    nkExportStmt, nkExportExceptStmt, nkFromStmt, nkImportStmt, nkImportExceptStmt}
+  imperativeCode = {low(ParsedNodeKind)..high(ParsedNodeKind)} - {pnkTemplateDef, pnkProcDef, pnkMethodDef,
+    pnkMacroDef, pnkConverterDef, pnkIteratorDef, pnkFuncDef, pnkPragma,
+    pnkExportStmt, pnkExportExceptStmt, pnkFromStmt, pnkImportStmt, pnkImportExceptStmt}
 
 proc prepareConfigNotes(graph: ModuleGraph; module: PSym) =
   # don't be verbose unless the module belongs to the main package:
@@ -176,18 +176,18 @@ proc processModule*(graph: ModuleGraph; module: PSym; idgen: IdGenerator;
       # for the interactive mode.
       if module.name.s != "nimscriptapi":
         processImplicits(
-          graph, graph.config.active.implicitImports, nkImportStmt, a, module)
+          graph, graph.config.active.implicitImports, pnkImportStmt, a, module)
         processImplicits(
-          graph, graph.config.active.implicitIncludes, nkIncludeStmt, a, module)
+          graph, graph.config.active.implicitIncludes, pnkIncludeStmt, a, module)
 
     while true:
       if graph.stopCompile(): break
       var n = parseTopLevelStmt(p)
-      if n.kind == nkEmpty: break
+      if n.kind == pnkEmpty: break
       if sfSystemModule notin module.flags and
           {sfNoForward} * module.flags != {}:
         # read everything, no streaming possible
-        var sl = newNodeI(nkStmtList, n.info)
+        var sl = newNodeI(pnkStmtList, n.info)
         sl.add n
         while true:
           var n = parseTopLevelStmt(p)
@@ -197,12 +197,12 @@ proc processModule*(graph: ModuleGraph; module: PSym; idgen: IdGenerator;
         break
       elif n.kind in imperativeCode:
         # read everything until the next proc declaration etc.
-        var sl = newNodeI(nkStmtList, n.info)
+        var sl = newNodeI(pnkStmtList, n.info)
         sl.add n
-        var rest: PNode = nil
+        var rest: ParsedNode = nil
         while true:
           var n = parseTopLevelStmt(p)
-          if n.kind == nkEmpty or n.kind notin imperativeCode:
+          if n.kind == pnkEmpty or n.kind notin imperativeCode:
             rest = n
             break
           sl.add n
