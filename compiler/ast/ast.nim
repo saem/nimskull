@@ -106,15 +106,20 @@ when false:
       echo v
 
 proc newSym*(symKind: TSymKind, name: PIdent, id: ItemId, owner: PSym,
-             info: TLineInfo; options: TOptions = {}): PSym =
-  # generates a symbol and initializes the hash field too
+             info: TLineInfo, typ: PType; options: TOptions = {}): PSym =
+  ## generates a symbol and initializes the hash field too
   result = PSym(name: name, kind: symKind, flags: {}, info: info, itemId: id,
-                options: options, owner: owner, offset: defaultOffset)
+                options: options, owner: owner, offset: defaultOffset, typ: typ)
   when false:
     if id.module == 48 and id.item == 39:
       writeStackTrace()
       echo "kind ", symKind, " ", name.s
       if owner != nil: echo owner.name.s
+
+proc newSym*(symKind: TSymKind, name: PIdent, id: ItemId, owner: PSym,
+             info: TLineInfo; options: TOptions = {}): PSym =
+  ## generates a symbol and initializes the hash field too
+  newSym(symKind, name, id, owner, info, typ = nil, options)
 
 proc linkTo*(t: PType, s: PSym): PType {.discardable.} =
   t.sym = s

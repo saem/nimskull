@@ -250,10 +250,9 @@ iterator allSyms*(c: PContext): (PSym, int, bool) =
       yield (s, scopeN, isLocal)
 
 proc someSymFromImportTable*(c: PContext; name: PIdent; ambiguous: var bool): PSym =
-  var marked = initIntSet()
-  var symSet = OverloadableSyms
-  if overloadableEnums notin c.features:
-    symSet.excl skEnumField
+  var
+    marked = initIntSet()
+    symSet = OverloadableSyms
   result = nil
   block outer:
     for im in c.imports.mitems:
@@ -264,11 +263,16 @@ proc someSymFromImportTable*(c: PContext; name: PIdent; ambiguous: var bool): PS
           ambiguous = true
           break outer
 
-proc searchInScopes*(c: PContext, s: PIdent; ambiguous: var bool): PSym =
-  for scope in allScopes(c.currentScope):
+proc searchInScopes*(
+    c: PContext, startingScope: PScope, s: PIdent; ambiguous: var bool
+  ): PSym {.inline.} =
+  for scope in allScopes(startingScope):
     result = strTableGet(scope.symbols, s)
     if result != nil: return result
   result = someSymFromImportTable(c, s, ambiguous)
+
+proc searchInScopes*(c: PContext, s: PIdent; ambiguous: var bool): PSym =
+  searchInScopes(c, c.currentScope, s, ambiguous)
 
 proc debugScopes*(c: PContext; limit=0, max = int.high) {.deprecated.} =
   var i = 0
@@ -619,26 +623,63 @@ proc errorUndeclaredIdentifierHint(
   result = errorSym(c, n,
             createUndeclaredIdentifierError(c, n, ident.s, candidates))
 
+proc errorAmbiguousUseQualifier(
+    c: PContext; ident: PIdent, n: PNode, candidates: seq[PSym]
+  ): PSym =
+  ## create an error symbol for an ambiguous unqualified lookup
+  var rep = reportSym(rsemAmbiguousIdent, candidates[0])
+  for i, candidate in candidates.pairs:
+    rep.symbols.add candidate
+
+  let err = c.config.newError(n, rep)
+  result = newQualifiedLookUpError(c, ident, n.info, err)
+
+type
+  TLookupFlag* = enum
+    checkAmbiguity, checkUndeclared, checkModule
+
+proc symFromCandidates(
+  c: PContext, candidates: seq[PSym], ident: PIdent, n: PNode,
+  flags: set[TLookupFlag], amb: var bool
+): PSym =
+  ## helper to find a sym in `candidates` from a scope or enums search
+  case candidates.len
+  of 0: nil
+  of 1: candidates[0]
+  else:
+    amb = true
+    if checkAmbiguity in flags:
+      errorAmbiguousUseQualifier(c, ident, n, candidates)
+    else:
+      candidates[0]
+
 proc lookUp*(c: PContext, n: PNode): PSym =
   # Looks up a symbol. Generates an error in case of nil.
   var amb = false
   case n.kind
-  of nkIdent:
-    result = searchInScopes(c, n.ident, amb).skipAlias(n, c.config)
-    if result == nil:
-      result = errorUndeclaredIdentifierHint(c, n, n.ident)
-      localReport(c.config, result.ast)
-  of nkSym:
-    result = n.sym
-  of nkAccQuoted:
-    var (ident, err) = considerQuotedIdent(c, n)
-    if err.isNil:
+  of nkIdent, nkAccQuoted:
+    let (ident, err) =
+      case n.kind
+      of nkAccQuoted:
+        considerQuotedIdent(c, n)
+      of nkIdent:
+        (n.ident, nil)  # uniform handling with `nkAccQuoted`
+      else:
+        (nil, nil) # xxx: should internal assert, it never happens
+
+    if err.isNil:       # always true for nkIdent, maybe for nkAccQuoted
       result = searchInScopes(c, ident, amb).skipAlias(n, c.config)
-      if result == nil:
-        result = errorUndeclaredIdentifierHint(c, n, ident)
+      if result.isNil:
+        let cands = allPureEnumFields(c, ident)
+        result = symFromCandidates(c, cands, ident, n, {checkAmbiguity}, amb)
+
+      if result.isNil:
+        result = errorUndeclaredIdentifierHint(c, n, n.ident)
         localReport(c.config, result.ast)
     else:
       result = newQualifiedLookUpError(c, ident, n.info, err)
+  of nkSym:
+    result = n.sym
   else:
     c.config.internalError("lookUp")
     return
@@ -680,21 +721,6 @@ proc errorUndeclaredIdentifierWithHint(
   if c.recursiveDep.len > 0:
     c.recursiveDep.setLen 0
 
-proc errorAmbiguousUseQualifier(
-    c: PContext; ident: PIdent, n: PNode, candidates: seq[PSym]
-  ): PSym =
-  ## create an error symbol for an ambiguous unqualified lookup
-  var rep = reportSym(rsemAmbiguousIdent, candidates[0])
-  for i, candidate in candidates.pairs:
-    rep.symbols.add candidate
-
-  let err = c.config.newError(n, rep)
-  result = newQualifiedLookUpError(c, ident, n.info, err)
-
-type
-  TLookupFlag* = enum
-    checkAmbiguity, checkUndeclared, checkModule, checkPureEnumFields
-
 proc qualifiedLookUp*(c: PContext, n: PNode, flags: set[TLookupFlag]): PSym =
   ## takes an identifier (ident, accent quoted, dot expression qualified, etc),
   ## finds the associated symbol or reports errors based on the `flags`
@@ -712,21 +738,6 @@ proc qualifiedLookUp*(c: PContext, n: PNode, flags: set[TLookupFlag]): PSym =
   ##      sites figure it out instead?
   const allExceptModule = {low(TSymKind)..high(TSymKind)} - {skModule, skPackage}
   c.config.addInNimDebugUtils("qualifiedLookup", n, result)
-
-  proc symFromCandidates(
-    c: PContext, candidates: seq[PSym], ident: PIdent, n: PNode,
-    flags: set[TLookupFlag], amb: var bool
-  ): PSym =
-    ## helper to find a sym in `candidates` from a scope or enums search
-    case candidates.len
-    of 0: nil
-    of 1: candidates[0]
-    else:
-      amb = true
-      if checkAmbiguity in flags:
-        errorAmbiguousUseQualifier(c, ident, n, candidates)
-      else:
-        candidates[0]
 
   case n.kind
   of nkIdent, nkAccQuoted:

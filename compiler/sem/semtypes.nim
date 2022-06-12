@@ -45,9 +45,8 @@ proc semEnum(c: PContext, n: PNode, prev: PType): PType =
 
     counter = toInt64(lastOrd(c.config, base)) + 1
   rawAddSon(result, base)
-  let isPure = result.sym != nil and sfPure in result.sym.flags
   var symbols: TStrTable
-  if isPure: initStrTable(symbols)
+  initStrTable(symbols)
   var hasNull = false
   for i in 1..<n.len:
     if n[i].kind == nkEmpty: continue
@@ -140,18 +139,12 @@ proc semEnum(c: PContext, n: PNode, prev: PType): PType =
     styleCheckDef(c.config, e)
     onDef(e.info, e)
     if sfGenSym notin e.flags:
-      if not isPure:
-        if overloadableEnums in c.features:
-          addInterfaceOverloadableSymAt(c, c.currentScope, e)
-        else:
-          addInterfaceDecl(c, e)
-      else:
-        declarePureEnumField(c, e)
-    if isPure and (let conflict = strTableInclReportConflict(symbols, e); conflict != nil):
+      declarePureEnumField(c, e)
+    if (let conflict = strTableInclReportConflict(symbols, e); conflict != nil):
       wrongRedefinition(c, e.info, e, conflict)
-
     inc(counter)
-  if isPure and sfExported in result.sym.flags:
+
+  if sfExported in result.sym.flags:
     addPureEnum(c, LazySym(sym: result.sym))
 
   if tfNotNil in e.typ.flags and not hasNull:

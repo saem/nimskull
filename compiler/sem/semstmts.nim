@@ -1477,8 +1477,7 @@ proc checkCovariantParamsUsages(c: PContext; genericType: PType) =
   discard traverseSubTypes(c, body)
 
 proc typeSectionRightSidePass(c: PContext, n: PNode) =
-  for i in 0..<n.len:
-    var a = n[i]
+  for a in n.sons:
     if a.kind == nkCommentStmt: continue
     if a.kind != nkTypeDef:
       semReportIllformedAst(c.config, a, {nkTypeDef})

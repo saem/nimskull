@@ -766,6 +766,9 @@ proc debugAst*(it: PNode) {.exportc, dbg.} =
   ##     from the `gdb` debugging session.
   echo treeRepr(implicitDebugConfRef, it, implicitTReprConf)
 
+type
+  DebugItem = PNode or PType or PSym
+
 proc debugType*(it: PType) {.exportc, dbg.} =
   ## Print out tree represntation of the type. Can also be used in gdb
   ## debugging session due to `.exportc.` annotation
@@ -776,19 +779,19 @@ proc debugSym*(it: PSym) {.exportc, dbg.} =
   ## debugging session due to `.exportc.` annotation
   echo treeRepr(implicitDebugConfRef, it, implicitTReprConf)
 
-proc debug*(it: PNode | PSym | PNode, tconf: TReprConf) {.dbg.} =
+proc debug*(it: DebugItem, tconf: TReprConf) {.dbg.} =
   ## Convenience overload of `debugAst`
   echo treeRepr(implicitDebugConfRef, it, tconf)
 
-proc debug*(conf: ConfigRef, it: PNode | PType | PSym, tconf: TReprConf) {.dbg.} =
+proc debug*(conf: ConfigRef, it: DebugItem, tconf: TReprConf) {.dbg.} =
   ## Print tree representation of the AST
   echo treeRepr(conf, it, tconf)
 
-proc debug*(it: PNode | PSym | PNode) {.dbg.} =
+proc debug*(it: DebugItem) {.dbg.} =
   ## Convenience overload of `debugAst`
   echo treeRepr(implicitDebugConfRef, it, implicitTReprConf)
 
-proc debug*(conf: ConfigRef, it: PNode | PType | PSym) {.dbg.} =
+proc debug*(conf: ConfigRef, it: DebugItem) {.dbg.} =
   ## Print tree representation of the AST
   echo treeRepr(conf, it, implicitTReprConf)
 

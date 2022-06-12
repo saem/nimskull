@@ -74,7 +74,7 @@ proc semGenericStmtSymbol(c: PContext, n: PNode, s: PSym,
   of skUnknown:
     # Introduced in this pass! Leave it as an identifier.
     result = n
-  of skProc, skFunc, skMethod, skIterator, skConverter, skModule:
+  of skProc, skFunc, skMethod, skIterator, skConverter, skModule, skEnumField:
     result = symChoice(c, n, s, scOpen)
   of skTemplate:
     if macroToExpandSym(s):
@@ -109,12 +109,6 @@ proc semGenericStmtSymbol(c: PContext, n: PNode, s: PSym,
     else:
       result = n
     onUse(n.info, s)
-  of skEnumField:
-    if overloadableEnums in c.features:
-      result = symChoice(c, n, s, scOpen)
-    else:
-      result = newSymNode(s, n.info)
-      onUse(n.info, s)
   else:
     result = newSymNode(s, n.info)
     onUse(n.info, s)

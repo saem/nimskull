@@ -111,17 +111,27 @@ proc semForFields(c: PContext, n: PNode, m: TMagic): PNode =
   # so that 'break' etc. work as expected, we produce
   # a 'while true: stmt; break' loop ...
   result = newNodeI(nkWhileStmt, n.info, 2)
-  var trueSymbol = systemModuleSym(c.graph, getIdent(c.cache, "true"))
-  if trueSymbol == nil:
-    localReport(c.config, n.info, reportStr(rsemSystemNeeds, "true"))
 
-    trueSymbol = newSym(
-      skUnknown, getIdent(c.cache, "true"),
-      nextSymId c.idgen, getCurrOwner(c), n.info)
-    trueSymbol.typ = getSysType(c.graph, n.info, tyBool)
+  let
+    boolSymbol = systemModuleSym(c.graph, getIdent(c.cache, "bool"))
+    trueSymbol =
+      if boolSymbol.typ.n[0].sym.name.s == "true":
+        boolSymbol.typ.n[0].sym
+      elif boolSymbol.typ.n[1].sym.name.s == "true":
+        boolSymbol.typ.n[1].sym
+      else:
+        # something is wrong with system.bool's definition?
+        localReport(c.config, n.info, reportStr(rsemSystemNeeds, "true"))
+
+        let tmp = newSym(
+                    skUnknown, getIdent(c.cache, "true"),
+                    nextSymId c.idgen, getCurrOwner(c), n.info)
+        tmp.typ = getSysType(c.graph, n.info, tyBool)
+        tmp
+      ## `true` enum field from `system.bool`
 
   result[0] = newSymNode(trueSymbol, n.info)
-  var stmts = newNodeI(nkStmtList, n.info)
+  let stmts = newNodeI(nkStmtList, n.info)
   result[1] = stmts
 
   var call = n[^2]

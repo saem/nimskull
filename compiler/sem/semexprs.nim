@@ -2716,7 +2716,7 @@ proc semExportExcept(c: PContext, n: PNode): PNode =
 proc semExport(c: PContext, n: PNode): PNode =
   proc specialSyms(c: PContext; s: PSym) {.inline.} =
     if s.kind == skConverter: addConverter(c, LazySym(sym: s))
-    elif s.kind == skType and s.typ != nil and s.typ.kind == tyEnum and sfPure in s.flags:
+    elif s.kind == skType and s.typ != nil and s.typ.kind == tyEnum:
       addPureEnum(c, LazySym(sym: s))
 
   result = newNodeI(nkExportStmt, n.info)
@@ -2749,13 +2749,6 @@ proc semExport(c: PContext, n: PNode): PNode =
           reexportSym(c, s)
           markUsed(c, n.info, s)
           specialSyms(c, s)
-          if s.kind == skType and sfPure notin s.flags:
-            var etyp = s.typ
-            if etyp.kind in {tyBool, tyEnum}:
-              for j in 0..<etyp.n.len:
-                var e = etyp.n[j].sym
-                c.config.internalAssert(e.kind == skEnumField, s.info, "rawImportSymbol")
-                reexportSym(c, e)
 
         s = nextOverloadIter(o, c, a)
 
@@ -2915,11 +2908,11 @@ proc semExpr(c: PContext, n: PNode, flags: TExprFlags = {}): PNode =
 
     # query
     let checks = if efNoEvaluateGeneric in flags:
-        {checkUndeclared, checkPureEnumFields}
+        {checkUndeclared}
       elif efInCall in flags:
-        {checkUndeclared, checkPureEnumFields, checkModule}
+        {checkUndeclared, checkModule}
       else:
-        {checkUndeclared, checkPureEnumFields, checkModule, checkAmbiguity}
+        {checkUndeclared, checkModule, checkAmbiguity}
     var s = qualifiedLookUp(c, n, checks) # query & production (errors)
 
     # production (outside of errors above)
@@ -2932,10 +2925,7 @@ proc semExpr(c: PContext, n: PNode, flags: TExprFlags = {}): PNode =
       if optOwnedRefs in c.config.globalOptions:
         result.typ = makeVarType(c, result.typ, tyOwned)
     of skEnumField:
-      if overloadableEnums in c.features:
-        result = enumFieldSymChoice(c, n, s)
-      else:
-        result = semSym(c, n, s, flags)
+      result = enumFieldSymChoice(c, n, s)
     of skError:
       result = semSym(c, s.ast, s, flags)
       # XXX: propogate the error type as it might not have been set, this

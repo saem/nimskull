@@ -344,8 +344,14 @@ proc litAux(g: TSrcGen; n: PNode, x: BiggestInt, size: int): string =
 
   let typ = n.typ.skip
   if typ != nil and typ.kind in {tyBool, tyEnum}:
-    if sfPure in typ.sym.flags:
+    case typ.kind
+    of tyBool:
+      discard # do nothing to keep the output cleaner
+    of tyEnum:
       result = typ.sym.name.s & '.'
+    else:
+      discard # ignore these
+    
     let enumfields = typ.n
     # we need a slow linear search because of enums with holes:
     for e in items(enumfields):

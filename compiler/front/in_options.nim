@@ -195,7 +195,6 @@ type
     strictFuncs,
     views,
     strictNotNil,
-    overloadableEnums,
     strictEffects,
     unicodeOperators
 

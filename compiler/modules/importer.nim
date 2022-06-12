@@ -76,9 +76,8 @@ proc importPureEnumField(c: PContext; s: PSym) =
       incl(c.ambiguousSymbols, s.id)
 
 proc importPureEnumFields(c: PContext; s: PSym; etyp: PType) =
-  assert sfPure in s.flags
-  for j in 0..<etyp.n.len:
-    var e = etyp.n[j].sym
+  for kid in etyp.n.sons:
+    var e = kid.sym
     c.config.internalAssert(e.kind == skEnumField, s.info, "rawImportSymbol")
     # BUGFIX: because of aliases for enums the symbol may already
     # have been put into the symbol table
@@ -108,27 +107,19 @@ proc rawImportSymbol(c: PContext, s, origin: PSym; importSet: var IntSet) =
     strTableAdd(c.importTable.symbols, s)
   else:
     importSet.incl s.id
-  if s.kind == skType:
-    var etyp = s.typ
-    if etyp.kind in {tyBool, tyEnum}:
-      for j in 0..<etyp.n.len:
-        var e = etyp.n[j].sym
-        c.config.internalAssert(e.kind == skEnumField, s.info, "rawImportSymbol")
-        # BUGFIX: because of aliases for enums the symbol may already
-        # have been put into the symbol table
-        # BUGFIX: but only iff they are the same symbols!
-        for check in importedItems(c, e.name):
-          if check.id == e.id:
-            e = nil
-            break
-        if e != nil:
-          if sfPure notin s.flags:
-            rawImportSymbol(c, e, origin, importSet)
-          else:
-            importPureEnumField(c, e)
+  
+  case s.kind
+  of skType:
+    let etyp = s.typ
+    case etyp.kind
+    of tyBool, tyEnum:
+      importPureEnumFields(c, s, etyp)
+    else:
+      discard
   else:
     if s.kind == skConverter: addConverter(c, LazySym(sym: s))
     if hasPattern(s): addPattern(c, LazySym(sym: s))
+  
   if s.owner != origin:
     c.exportIndirections.incl((origin.id, s.id))
 
