@@ -711,6 +711,16 @@ proc eat(p: var SexpParser, tok: TTokKind) =
   if p.tok == tok: discard getTok(p)
   else: raiseParseErr(p, tokToStr[tok])
 
+proc eatZeroOrMore(p: var SexpParser, tok: TTokKind) {.inline.} =
+  ## eat if matches and keep going
+  while p.tok == tok:
+    discard getTok(p)
+
+proc eatOneOrMore(p: var SexpParser, tok: TTokKind) =
+  ## eat once, then keep going as long as the token repeats
+  eat(p, tok)
+  eatZeroOrMore(p, tok)
+
 proc parseSexp*(p: var SexpParser): SexpNode =
   ## Parses SEXP from a SEXP Parser `p`.
   case p.tok
@@ -735,13 +745,14 @@ proc parseSexp*(p: var SexpParser): SexpNode =
   of tkParensLe:
     result = newSList()
     discard getTok(p)
+    eatZeroOrMore(p, tkSpace)
     while p.tok notin {tkParensRi, tkDot}:
       result.add(parseSexp(p))
       if p.tok != tkSpace: break
-      discard getTok(p)
+      eatZeroOrMore(p, tkSpace)
     if p.tok == tkDot:
       eat(p, tkDot)
-      eat(p, tkSpace)
+      eatOneOrMore(p, tkSpace)
       result.add(parseSexp(p))
       result = newSCons(result[0], result[1])
     eat(p, tkParensRi)
@@ -749,7 +760,7 @@ proc parseSexp*(p: var SexpParser): SexpNode =
     # `:key (value)`
     let key = p.a[1 .. ^1]
     discard getTok(p)
-    eat(p, tkSpace)
+    eatOneOrMore(p, tkSpace)
     result = newSKeyword(key, parseSexp(p))
   of tkSpace, tkDot, tkError, tkParensRi, tkEof:
     raiseParseErr(p, "(")

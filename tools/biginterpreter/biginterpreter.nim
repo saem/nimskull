@@ -2,6 +2,19 @@ import std/unittest
 
 import std/streams
 import experimental/sexp
+import std/strutils
+
+proc parse(parser: var SexpParser, src: string): (SexpNode, ref SexpParsingError) =
+  ## simple sexp parser for testing
+  parser.open(newStringStream(src))
+  discard getTok(parser)    # read the first token; "prime" the parser
+  result = 
+    try:
+      (parser.parseSexp(), nil)
+    except SexpParsingError as e:
+      (nil, e)
+    finally:
+      parser.close()
 
 # proj(somename, #[code]# empty)
 
@@ -11,131 +24,170 @@ import experimental/sexp
 # compile: compiler -> target -> partial[input] -> interpretable -> result[executable]
 # interpret: interpreter -> host -> env -> partial[input] -> interpretable -> partial[input] -> result[output|interpretable]
 
-type # useful general things
-  Version = distinct string
+# `cyo [run] foo.cyo` executes the cyo program in foo.cyo, the `[run]` part is optional
 
-  Source = string
-
-type # project description  
-  ProjDescNodeKind {.pure.} = enum
-    pdnMeta
-    pdnModule
-
-  ProjDescNode = object
-    case kind: ProjDescNodeKind
-    of pdnMeta:
-      version: string
-    of pdnModule:
-      discard
-
-  ProjectDesc = object
-    data: seq[ProjDescNode]
-
-type # top level data
-  Analyser = object
+type
+  CyoExe = object
     discard
-  Compiler = object
-    analyser: Analyser
-  Interpreter = object
-    discard
+
+  CyoData = object
+    cmd: CyoCmd
+    args: string
+
+  CyoRun = object
+    source: string
+
+  CyoCmd = enum
+    cyoCmdRun
+
+let foo = """
+(
+  (:cyo (:version (0 1)) (:stdlib (cyo std)))
+
+  (:open std)
+
+  (:let greeting "Hello")
+  (:var target "World")
+
+  (echo greeting ", " target "!")
+)
+""".strip()
+
+suite "whatever":
+  test "thing":
+    var sexpParser: SexpParser
+    let (parsed, err) = sexpParser.parse(foo)
+
+    echo foo, "\n", parsed
+    # echo parsed
+
+# type # useful general things
+#   Version = object
+#     major: int
+#     minor: int
+
+#   Source = string
+
+# type # project description  
+#   ProjDescNodeKind {.pure.} = enum
+#     pdnMeta
+#     pdnModule
+
+#   ProjDescNode = object
+#     case kind: ProjDescNodeKind
+#     of pdnMeta:
+#       version: string
+#     of pdnModule:
+#       discard
+
+#   ProjectDesc = object
+#     data: seq[ProjDescNode]
+
+# type # top level data
+#   Analyser = object
+#     discard
+#   Compiler = object
+#     analyser: Analyser
+#   Interpreter = object
+#     discard
   
-  Project = object
-    version: Version
+#   Project = object
+#     version: Version
   
-  HostInf = object
-    discard
-  HostData = object
-    discard
+#   HostInf = object
+#     discard
+#   HostData = object
+#     discard
 
-  EnvData = object
-    discard
+#   EnvData = object
+#     discard
 
-  Interpretable = object
-    discard
+#   Interpretable = object
+#     discard
 
-  Target = object
-    discard
+#   Target = object
+#     discard
 
-  InputDesc = object
-    discard
+#   InputDesc = object
+#     discard
 
-  ExecutableDesc = object
-    discard
+#   ExecutableDesc = object
+#     discard
 
-  ExecutionDesc = object
-    stdOut: string
-    stdErr: string
-    exitCode: int
+#   ExecutionDesc = object
+#     stdOut: string
+#     stdErr: string
+#     exitCode: int
 
-proc analyse(a: Analyser, h: HostInf, e: EnvData, d: ProjectDesc): Project =
-  var version: string
-  for n in d.data:
-    case n.kind
-    of pdnMeta:
-      version = n.version
-    of pdnModule:
-      discard
+# proc analyse(a: Analyser, h: HostInf, e: EnvData, d: ProjectDesc): Project =
+#   var version: string
+#   for n in d.data:
+#     case n.kind
+#     of pdnMeta:
+#       version = n.version
+#     of pdnModule:
+#       discard
 
-  Project(version: Version version)
+#   Project(version: Version version)
 
-proc compile(c: Compiler, h: HostInf, e: EnvData, d: ProjectDesc, i: InputDesc): Interpretable =
-  let
-    project = analyse(c.analyser, h, e, d)
-    assume = """
-(:meta (:version "0.0.1"))
-(:require (std system))
+# proc compile(c: Compiler, h: HostInf, e: EnvData, d: ProjectDesc, i: InputDesc): Interpretable =
+#   let
+#     project = analyse(c.analyser, h, e, d)
+#     assume = """
+# (:cyo (:version (0 1)) (:std cyo))
+# (:require (std system))
 
-"""
+# """
 
-  Interpretable()
+#   Interpretable()
 
-proc interpret(i: Interpreter, h: HostInf, e: EnvData, p: Interpretable, input: InputDesc): ExecutionDesc =
-  discard
+# proc interpret(i: Interpreter, h: HostInf, e: EnvData, p: Interpretable, input: InputDesc): ExecutionDesc =
+#   ExecutionDesc(stdOut: "Hello, World!", stdErr: "", exitCode: 0)
 
-proc `==`(a, b: Version): bool {.borrow.}
-
-suite "language as a function":
-  test "analyse":
-    let
-      givenProjDesc =
-        ProjectDesc(
-          data: @[
-            ProjDescNode(kind: pdnMeta, version: "0.0.1")
-          ]
-        )
-      actual = analyse(Analyser(), HostInf(), EnvData(), givenProjDesc)
-    check(actual == Project(version: Version "0.0.1"))
+# suite "language as a function":
+#   test "analyse":
+#     let
+#       givenProjDesc =
+#         ProjectDesc(
+#           data: @[
+#             ProjDescNode(kind: pdnMeta, version: "0.0.1")
+#           ]
+#         )
+#       actual = analyse(Analyser(), HostInf(), EnvData(), givenProjDesc)
+    
+#     check(actual == Project(version: Version "0.0.1"))
   
-  test "compile":
-    let
-      givenProjDesc =
-        ProjectDesc(
-          data: @[
-            ProjDescNode(kind: pdnMeta, version: "0.0.1")
-          ]
-        )
-      actual = compile(Compiler(), HostInf(), EnvData(), givenProjDesc, InputDesc())
-    check(actual == Interpretable())
+#   test "compile":
+#     let
+#       givenProjDesc =
+#         ProjectDesc(
+#           data: @[
+#             ProjDescNode(kind: pdnMeta, version: "0.0.1")
+#           ]
+#         )
+#       actual = compile(Compiler(), HostInf(), EnvData(), givenProjDesc, InputDesc())
+    
+#     check(actual == Interpretable())
 
-  test "interpret":
-    let
-      givenInterpretable =
-        block:
-          let
-            compiler = Compiler()
-            host = HostInf()
-            env = EnvData()
-            projDesc =
-              ProjectDesc(
-                data: @[
-                  ProjDescNode(kind: pdnMeta, version: "0.0.1")
-                ]
-              )
-            input = InputDesc()
-          compile(compiler, host, env, projDesc, input)      
-      actual = interpret(Interpreter(), HostInf(), EnvData(), givenInterpretable, InputDesc())
+#   test "interpret":
+#     let
+#       givenInterpretable =
+#         block:
+#           let
+#             compiler = Compiler()
+#             host = HostInf()
+#             env = EnvData()
+#             projDesc =
+#               ProjectDesc(
+#                 data: @[
+#                   ProjDescNode(kind: pdnMeta, version: "0.0.1")
+#                 ]
+#               )
+#             input = InputDesc()
+#           compile(compiler, host, env, projDesc, input)      
+#       actual = interpret(Interpreter(), HostInf(), EnvData(), givenInterpretable, InputDesc())
       
-    check(actual == ExecutionDesc(stdOut: "Hello, World!"))
+#     check(actual == ExecutionDesc(stdOut: "Hello, World!"))
 
 # type
 #   Interpreter = object
@@ -217,17 +269,6 @@ suite "language as a function":
 #           for a in s
 #       of SNil, SInt, SFloat, SString, SKeyword, SList, SCons:
 #         result = Interpretation(kind: invalidProgram)
-
-# proc parse(parser: var SexpParser, src: Source): (SexpNode, ref SexpParsingError) =
-#   parser.open(newStringStream(src))
-#   discard getTok(parser)    # read the first token; "prime" the parser
-#   result = 
-#     try:
-#       (parser.parseSexp(), nil)
-#     except SexpParsingError as e:
-#       (nil, e)
-#     finally:
-#       parser.close()
 
 # proc interpret(i: var Interpreter, src: Source): Interpretation =
 #   var sexpParser: SexpParser
