@@ -749,14 +749,17 @@ proc matchUserTypeClass*(m: var TCandidate; ff, a: PType): PType =
 
 proc shouldSkipDistinct(m: TCandidate; rules: PNode, callIdent: PIdent): bool =
   # xxx: `considerQuotedIdent` can produce an error and is not being handled
-  if rules.kind == nkWith:
+  case rules.kind
+  of nkWith:
     for r in rules:
       if considerQuotedIdent(m.c, r) == (callIdent, nil): return true
     return false
-  else:
+  of nkWithout:
     for r in rules:
       if considerQuotedIdent(m.c, r) == (callIdent, nil): return false
     return true
+  else:
+    assert false, "internal error should never get here"
 
 proc maybeSkipDistinct(m: TCandidate; t: PType, callee: PSym): PType =
   if t != nil and t.kind == tyDistinct and t.n != nil and

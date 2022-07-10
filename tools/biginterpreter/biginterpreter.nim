@@ -4,6 +4,185 @@ import std/streams
 import experimental/sexp
 import std/strutils
 
+# `cyo [run] foo.cyo` executes the cyo program in foo.cyo, the `[run]` part is
+# optional
+#
+# A "big idea" with cyo is that everything immediately runs, there is no
+# compile to an exe. If one wants to compile to an exe they write a program
+# that emits a "program value". In essence they write a build program and the
+# compiler is treated as a library providing a standard build CLI interface.
+# This interface should be used or enjoy making an ecosystem. Now invoking the
+# "compiler" is akin to calling a function via the CLI that in turn calls a
+# build function. The build dependencies are reduced to which compiler exe,
+# build program, and the dependencies of the build program itself. Program
+# dependencies (packages, resources, etc) are now the builds' problem, which
+# may use the provided standard approach or do something else. The language
+# understands packages, their versions and so on, but the implementation of
+# operations (lookup, resolution, etc) are free. The stdlib ships a "CLI
+# protocol" and default implementation(s) covering things like debug, build,
+# testing, CI, IDEs, docs, linting, etc and people can choose to use it or not.
+#
+# misc notes
+# ==========
+#
+# dispatch priority
+# -----------------
+# - untyped params have highest match priority in dispatch
+# - then specific types
+# - then generic types
+# - then conversion
+# - then typed
+#
+#
+type
+  CyoTokenKind = enum
+    ## tokens... finish implementing
+    cytkError  ## boo an error
+  
+  CyoSourceTree = enum
+    ## concrete syntax, touch more than raw tokens, for pure source transforms
+    ## finish implementing, gets converted into `CyoAbstractSyntaxKind`
+    cstkError ## boo an error
+
+  CyoAbstractSyntaxKind = enum
+    ## abstract syntax tree comes out of the parser after some normalization,
+    ## gets converted into `CyoCoreRepresentationKind`
+    caskError ## boo an error
+    
+    caskMetaHeader ## top of a source file metadata which cyo version and
+                   ## stdlib eg: `##!(:cyo (:version 1) (:stdlib cyo std))`
+                   ## starts with `##!` and the rest of the content is a sexp
+                   ## xxx: sexps are cool... or be consistent with pragmas?
+
+    caskEmpty      ## an empty node... specializing nodes removes the need
+
+    caskComment ## single line comment `#` or `#[]#` comment range
+    caskDoc     ## single line documentation comment `##` or `##[]##` range,
+                ## associates to the AST node containing this group
+
+    # Literals - Start
+    caskLitInt       ## integer literal, `1`, `-9`
+    
+    caskLitInt8      ## integer 8 bit literal, `1'i8`, `-43'i8`
+    caskLitInt16     ## integer 16 bit literal, `1'i16`, `-43'i16`
+    caskLitInt32     ## integer 32 bit literal, `1'i32`, `-43'i32`
+    caskLitInt64     ## integer 64 bit literal, `1'i64`, `-43'i64`
+    
+    caskLitUInt      ## unsigned integer literal, `0'u`, `95'u`
+    caskLitUInt8     ## unsigned integer 8 bit literal, `1'u8`, `52'u8`
+    caskLitUInt16    ## unsigned integer 16 bit literal, `1'u16`, `52'u16`
+    caskLitUInt32    ## unsigned integer 32 bit literal, `1'u32`, `52'u32`
+    caskLitUInt64    ## unsigned integer 64 bit literal, `1'u64`, `52'u64`
+    
+    caskLitFloat     ## float literal, `1.0`
+    caskLitFloat32   ## float 32 bit literal, `1.0f32`, `0'f`
+    caskLitFloat64   ## float 64 bit literal, `1.0f64`, `0'd`
+    caskLitFloat128  ## float 128 bit literal
+
+    caskLitChar      ## character literal, 8 bit, `'a'`, `'\n'`, `'\69'`
+
+    caskLitNil       ## nil literal
+
+    caskLitStr       ## string literal
+    caskLitTripleStr ## string triple quoted literal
+    # xxx are "raw" or "generalized" string literals required?
+    # Literals - End
+    
+    caskIdent     ## identifier
+    caskAccQuoted
+
+    caskDotExpr
+    caskCall,
+    caskCommand,
+
+    caskInfix   ## a binary infix operation, eg: `1 / 2` or `cyo/std`
+    caskPostfix ## postfix operation, eg: `foo*`
+    caskPrefix  ## prefix operation
+
+    caskPragma    ## instructions to the compiler, eg: `{.foo.}`
+    caskPragmaSpan ## `{.foo.}: ...`, where `...` are expressions or statements
+
+    caskPar
+    caskBracket
+    caskBrace
+
+    caskTupleConstr
+    caskObjConstr
+
+    caskBlock      ## block
+    caskBlockLabel ## labelled block
+
+    caskIf
+    caskElif       ## xxx: can we replace with with `else if ...:`?
+    caskElse
+    caskCase
+    caskOf
+    caskWhen
+
+    caskWhile
+    caskFor
+
+    caskContinue      ## continue without a label
+    caskContinueLabel ## continue with a label
+    caskBreak         ## break without a label
+    caskBreakLabel    ## break with a label
+
+    caskReturn        ## return without an expression
+    caskReturnExpr    ## return with an expression on the right
+
+    caskYield
+    caskYieldExpr
+
+    caskDiscard
+    caskDiscardExpr
+
+    caskTry
+    caskExcept
+    caskFinally
+
+    caskRaise
+
+    caskDefer
+    
+    caskStaticBlk  ## static block
+
+    caskProcDef    ## procedure definition
+    caskFuncDef    ## function definition
+    # xxx: thinking of not doing macros or templates, just have quoting and
+    #      macros and templates are just procedures and functions that take
+    #      typed or untyped arguments
+
+    caskMacroDef ## prefix to a func or proc definition, allowing it to accept function with 1 or more `untyped|typed` params and a
+                     ## return type of `untyped{noeffects}` as the signature
+    caskMacroProcDef ## procedure with 1 ormore `untyped|typed` params and a
+                     ## return type of `untyped` as the signature
+
+    caskEvalUntyped ## identifier suffixed with an `!`, eg: `foo! ...` passes
+                    ## all untyped syntax right of the `!` to a macro foo
+    caskEvalTyped   ## identifier suffixed with `!!`, eg: `cps!! ...` passes all
+                    ## typed syntax right of the `!!` to a macro foo
+
+    caskQuote ## a quoted syntax
+
+
+  CyoCoreRepresentationKind = enum
+    ## the internal lisp-y core, this is before we drop to codegen land
+    ccrkError ## boo an error
+
+
+
+
+
+
+# =====================================
+# IGNORE EVERYTHING BELOW HERE
+# =====================================
+
+
+# ------------------------------------------------------------------------
+# playing with cyo ideas but using sexp to avoid faffing about with syntax
+# ------------------------------------------------------------------------
+
 proc parse(parser: var SexpParser, src: string): (SexpNode, ref SexpParsingError) =
   ## simple sexp parser for testing
   parser.open(newStringStream(src))
@@ -16,31 +195,8 @@ proc parse(parser: var SexpParser, src: string): (SexpNode, ref SexpParsingError
     finally:
       parser.close()
 
-# proj(somename, #[code]# empty)
 
-# source_text | source_data -> project
-# analyse: analyser -> host -> env -> project_desc -> project
-# compile: compiler -> host -> env -> partial[input] -> project -> result[interpretable]
-# compile: compiler -> target -> partial[input] -> interpretable -> result[executable]
-# interpret: interpreter -> host -> env -> partial[input] -> interpretable -> partial[input] -> result[output|interpretable]
-
-# `cyo [run] foo.cyo` executes the cyo program in foo.cyo, the `[run]` part is optional
-
-type
-  CyoExe = object
-    discard
-
-  CyoData = object
-    cmd: CyoCmd
-    args: string
-
-  CyoRun = object
-    source: string
-
-  CyoCmd = enum
-    cyoCmdRun
-
-let foo = """
+let srcHelloWorld = """
 (
   (:cyo (:version (0 1)) (:stdlib (cyo std)))
 
@@ -53,13 +209,39 @@ let foo = """
 )
 """.strip()
 
-suite "whatever":
-  test "thing":
-    var sexpParser: SexpParser
-    let (parsed, err) = sexpParser.parse(foo)
+let srcblah = """
+(
+  (:cyo (:version (0 1)))
 
-    echo foo, "\n", parsed
-    # echo parsed
+  (:types
+    (:type Subrange (range 0 5))
+    (:type PositiveFloat (range 0.0 Inf))
+  )
+)
+""".strip()
+
+suite "whatever":
+  test "hello world":
+    var sexpParser: SexpParser
+    let (parsed, err) = sexpParser.parse(srcHelloWorld)
+
+    echo srcHelloWorld, "\n", parsed
+
+  test "blah":
+    # TODO finish writing this test
+    var sexpParser: SexpParser
+    let (parsed, err) = sexpParser.parse(srcblah)
+
+    echo srcblah, "\n", parsed
+
+# Ignore stuff below this
+
+# proj(somename, #[code]# empty)
+# source_text | source_data -> project
+# analyse: analyser -> host -> env -> project_desc -> project
+# compile: compiler -> host -> env -> partial[input] -> project -> result[interpretable]
+# compile: compiler -> target -> partial[input] -> interpretable -> result[executable]
+# interpret: interpreter -> host -> env -> partial[input] -> interpretable -> partial[input] -> result[output|interpretable]
 
 # type # useful general things
 #   Version = object
