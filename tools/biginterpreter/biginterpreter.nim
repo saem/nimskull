@@ -62,7 +62,6 @@ type
 
     # Literals - Start
     caskLitInt       ## integer literal, `1`, `-9`
-    
     caskLitInt8      ## integer 8 bit literal, `1'i8`, `-43'i8`
     caskLitInt16     ## integer 16 bit literal, `1'i16`, `-43'i16`
     caskLitInt32     ## integer 32 bit literal, `1'i32`, `-43'i32`
@@ -85,15 +84,16 @@ type
 
     caskLitStr       ## string literal
     caskLitTripleStr ## string triple quoted literal
-    # xxx are "raw" or "generalized" string literals required?
+    # xxx are "raw" string literals required?
     # Literals - End
     
     caskIdent     ## identifier
-    caskAccQuoted
+    caskAccQuoted ## eg: `var`, unkeywords things
 
     caskDotExpr
-    caskCall,
-    caskCommand,
+    caskCall
+    caskCommand
+    # xxx: are "generalized" string literals required?
 
     caskInfix   ## a binary infix operation, eg: `1 / 2` or `cyo/std`
     caskPostfix ## postfix operation, eg: `foo*`
@@ -101,13 +101,20 @@ type
 
     caskPragma    ## instructions to the compiler, eg: `{.foo.}`
     caskPragmaSpan ## `{.foo.}: ...`, where `...` are expressions or statements
+    # xxx: skipping pragma blocks, don't think they make sense 
 
     caskPar
     caskBracket
+    caskBracketExpr
     caskBrace
+    caskBraceExpr
 
-    caskTupleConstr
-    caskObjConstr
+    caskTupleConstr ## 
+    caskObjConstr   ## 
+    caskTableConstr ## `{a: 1, b: 2}`
+
+    caskExprEqExpr
+    caskExprColonExpr
 
     caskBlock      ## block
     caskBlockLabel ## labelled block
@@ -130,11 +137,11 @@ type
     caskReturn        ## return without an expression
     caskReturnExpr    ## return with an expression on the right
 
-    caskYield
-    caskYieldExpr
-
     caskDiscard
     caskDiscardExpr
+
+    caskYield
+    caskYieldExpr
 
     caskTry
     caskExcept
@@ -143,26 +150,42 @@ type
     caskRaise
 
     caskDefer
+
+    caskConstSection
+    caskLetSection
+    caskVarSection
+
+    caskIdentDefs
+    # nkConstdef
+    caskUnpackDef
+
+    caskAsgn
+
+    caskLambda
+    # nkDo
     
-    caskStaticBlk  ## static block
+    caskStaticSpan  ## static span
+    caskCast
 
     caskProcDef    ## procedure definition
     caskFuncDef    ## function definition
+    caskMethodDef
+    caskConverterDef
+    caskIteratorDef
     # xxx: thinking of not doing macros or templates, just have quoting and
     #      macros and templates are just procedures and functions that take
     #      typed or untyped arguments
 
+    caskQuote ## quoted syntax between `< ... >` xxx: hmmm
+
+    caskTemplateDef ## procedure with 1 or more `untyped|typed` params and a
+                    ## return type of `untyped` as the signature
     caskMacroDef ## prefix to a func or proc definition, allowing it to accept function with 1 or more `untyped|typed` params and a
                      ## return type of `untyped{noeffects}` as the signature
-    caskMacroProcDef ## procedure with 1 ormore `untyped|typed` params and a
-                     ## return type of `untyped` as the signature
 
-    caskEvalUntyped ## identifier suffixed with an `!`, eg: `foo! ...` passes
-                    ## all untyped syntax right of the `!` to a macro foo
-    caskEvalTyped   ## identifier suffixed with `!!`, eg: `cps!! ...` passes all
-                    ## typed syntax right of the `!!` to a macro foo
+    caskEval ## identifier prefixed with an `@`, eg: `@cps ...` passes all
+             ## untyped syntax right of the identifier to a macros `cps`
 
-    caskQuote ## a quoted syntax
 
 
   CyoCoreRepresentationKind = enum

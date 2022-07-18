@@ -109,6 +109,178 @@ const
   defaultAlignment* = -1
   defaultOffset* = -1
 
+  parserNodeChecklist = {
+    nkError,
+
+    # caskMetaHeader
+    
+    nkEmpty,
+
+    nkCommentStmt,
+    # caskDoc
+
+
+    nkIntLit,
+    nkInt8Lit,
+    nkInt16Lit,
+    nkInt32Lit,
+    nkInt64Lit,
+    
+    nkUIntLit,
+    nkUInt8Lit,
+    nkUInt16Lit,
+    nkUInt32Lit,
+    nkUInt64Lit,
+    
+    nkFloatLit,
+    nkFloat32Lit,
+    nkFloat64Lit,
+    nkFloat128Lit,
+
+    nkCharLit,
+
+    nkNilLit,
+    
+    nkStrLit,
+    nkTripleStrLit,
+    # nkRStrLit
+    
+
+    nkIdent,
+    nkAccQuoted,
+    
+    nkDotExpr,
+    nkCall,
+    nkCommand,
+    nkCallStrLit,
+    
+    nkInfix,
+    nkPrefix,
+    nkPostfix,
+
+    nkPragmaExpr,
+    nkPragma,
+    # nkPragmaBlock
+
+    nkPar,
+    nkBracket,
+    nkBracketExpr,
+    nkCurly,
+    nkCurlyExpr,
+
+    nkTupleConstr,
+    nkObjConstr,
+    nkTableConstr,
+
+    nkExprEqExpr,
+    nkExprColonExpr,
+
+    nkBlockStmt,
+    # caskBlockLabel
+
+    nkIfExpr, nkIfStmt,
+    nkElifBranch, nkElifExpr,
+    nkElse, nkElseExpr,
+    nkCaseStmt,
+    nkOfBranch,
+    nkWhenStmt,
+
+    nkWhileStmt,
+    nkForStmt,
+
+    nkContinueStmt,
+    # caskContinueLabele
+    nkBreakStmt,
+    # caskBreakLabel
+
+    nkReturnStmt,
+    # caskReturnExpr
+    
+    nkDiscardStmt,
+    # caskDiscardExpr
+
+    nkYieldStmt,
+    # caskYieldExpr
+
+    nkTryStmt,
+    nkExceptBranch,
+    nkFinally,
+
+    nkRaiseStmt,
+
+    nkDefer,
+
+    nkConstSection,
+    nkLetSection,
+    nkVarSection,
+
+    nkIdentDefs,
+    nkConstDef,
+    nkVarTuple,
+
+    nkAsgn,
+
+    nkLambda,
+    nkDo,
+
+    nkStaticStmt,
+    nkCast,
+
+    nkProcDef,
+    nkFuncDef,
+    nkMethodDef,
+    nkConverterDef,
+    nkIteratorDef,
+
+
+
+
+    nkMacroDef,
+    
+    nkTemplateDef,
+
+    nkGenericParams,
+    nkFormalParams,
+
+    nkStmtList, nkStmtListExpr,
+
+    nkImportStmt, nkImportExceptStmt, nkImportAs, nkFromStmt,
+    
+    nkIncludeStmt,
+
+    nkExportStmt, nkExportExceptStmt,
+
+    nkBind, nkBindStmt, nkMixinStmt,
+
+    nkTypeSection,
+    nkTypeDef,
+
+    nkEnumTy,
+    nkEnumFieldDef,
+
+    nkObjectTy, nkTupleTy, nkProcTy, nkIteratorTy,
+
+    nkRecList, nkRecCase, nkRecWhen,
+
+    nkTypeOfExpr,
+
+    # nkConstTy,
+    nkRefTy, nkVarTy, nkPtrTy, nkStaticTy, nkDistinctTy,
+    nkMutableTy,
+
+    nkTupleClassTy, nkTypeClassTy,
+
+    nkOfInherit,
+
+    nkArgList,
+
+    nkWith, nkWithout,
+
+    nkAsmStmt,
+
+    nkUsingStmt,
+  }
+
   nodeKindsProducedByParse* = {
     nkError, nkEmpty,
     nkIdent,
