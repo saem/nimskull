@@ -14,6 +14,7 @@ macro unexport(n: typed): untyped =
   result = copyNimTree(n)
   # turn nnkSym -> nnkIdent, forcing re-sem and dropping any exported-ness
   # that might be present
+  echo treeRepr n
   result[0] = n.name.strVal.ident
 
 proc foo*() {.unexport.} = discard

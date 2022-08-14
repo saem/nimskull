@@ -1163,8 +1163,6 @@ proc track(tracked: PEffects, n: PNode) =
       let oldState = tracked.init.len
       let oldFacts = tracked.guards.s.len
       addFact(tracked.guards, n[0])
-      if n[0].kind == nkError:
-        echo n.id
       track(tracked, n[0])
       track(tracked, n[1])
       setLen(tracked.init, oldState)
@@ -1323,6 +1321,7 @@ proc track(tracked: PEffects, n: PNode) =
 
     inc tracked.leftPartOfAsgn
   of nkError:
+    # debug n
     localReport(tracked.config, n)
   else:
     for i in 0 ..< n.safeLen:

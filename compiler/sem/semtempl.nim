@@ -858,16 +858,14 @@ proc semPatternBody(c: var TemplCtx, n: PNode): PNode =
         n[1][1] = expectParam(c, n[1][1])
       else:
         localReport(c.c.config, n, reportSem rsemInvalidExpression)
-
     else:
       localReport(c.c.config, n, reportSem rsemInvalidExpression)
-
   of nkStmtList, nkStmtListExpr:
     if stupidStmtListExpr(n):
       result = semPatternBody(c, n.lastSon)
     else:
-      for i in 0..<n.len:
-        result[i] = semPatternBody(c, n[i])
+      for i, s in n.pairs:
+        result[i] = semPatternBody(c, s)
   of nkCallKinds:
     let s = qualifiedLookUp(c.c, n[0], {})
     if s.isError:
@@ -904,27 +902,33 @@ proc semPatternBody(c: var TemplCtx, n: PNode): PNode =
            semPatternBody(c, n[1])]
         return
 
-    for i in 0..<n.len:
-      result[i] = semPatternBody(c, n[i])
-  else:
-    # dotExpr is ambiguous: note that we explicitly allow 'x.TemplateParam',
+    for i, s in n.pairs:
+      result[i] = semPatternBody(c, s)
+  of nkDotExpr, nkAccQuoted:
+    # dotExpr is ambiguous: note that we explicitly allow `x.TemplateParam`,
     # so we use the generic code for nkDotExpr too
-    case n.kind
-    of nkDotExpr, nkAccQuoted:
-      let s = qualifiedLookUp(c.c, n, {})
-      if s.isError:
-        # XXX: move to propagating nkError, skError, and tyError
-        localReport(c.c.config, s.ast)
-      elif s != nil:
-        if contains(c.toBind, s.id):
-          return symChoice(c.c, n, s, scClosed)
-        else:
-          return newIdentNode(s.name, n.info)
-    of nkPar:
-      if n.len == 1: return semPatternBody(c, n[0])
-    else: discard
-    for i in 0..<n.len:
-      result[i] = semPatternBody(c, n[i])
+    let s = qualifiedLookUp(c.c, n, {})
+    if s.isError:
+      # XXX: move to propagating nkError, skError, and tyError
+      # localReport(c.c.config, s.ast)
+      return s.ast
+    elif s != nil:
+      if contains(c.toBind, s.id):
+        return symChoice(c.c, n, s, scClosed)
+      else:
+        return newIdentNode(s.name, n.info)
+    else:
+      for i, s in n.pairs:
+        result[i] = semPatternBody(c, s)
+  of nkPar:
+    for i, s in n.pairs:
+      result[i] = semPatternBody(c, s)
+    
+    if result.len == 1:
+      result = result[0]
+  else:
+    for i, s in n.pairs:
+      result[i] = semPatternBody(c, s)
 
 proc semPattern(c: PContext, n: PNode; s: PSym): PNode =
   case n.kind

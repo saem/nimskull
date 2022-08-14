@@ -3230,13 +3230,6 @@ proc semStmtList(c: PContext, n: PNode, flags: TExprFlags): PNode =
       voidContext = true
       result.typ = c.enforceVoidContext
 
-    if last and (n.len == 1 or
-                 ({efWantValue, efInTypeof} * flags != {}) or
-                 not voidContext):
-      result.typ = x.typ
-      if not isEmptyType(result.typ):
-        result.transitionSonsKind(nkStmtListExpr)
-
     template addStmt(kid) =
       result.add:
         if not last or voidContext:
@@ -3255,14 +3248,20 @@ proc semStmtList(c: PContext, n: PNode, flags: TExprFlags): PNode =
       # this can be flattened, because of the earlier semExpr call we are
       # assured that the maximum nesting is of depth 1
 
-      if nfBlockArg in x.flags:
-        addStmt(x)
-      else:
-        for j, a in x.pairs:
-          # TODO: guard against last node being an nkStmtList?
-          addStmt(a)        
+      for a in x.sons:
+        # TODO: guard against last node being an nkStmtList?
+        addStmt(a)
+    of nkEmpty:
+      discard
     else:
       addStmt(x)
+
+    if last and (result.len == 1 or
+                 ({efWantValue, efInTypeof} * flags != {}) or
+                 not voidContext):
+      result.typ = x.typ
+      if not isEmptyType(result.typ):
+        result.transitionSonsKind(nkStmtListExpr)
   
     if x.kind in nkLastBlockStmts or
        x.kind in nkCallKinds and x[0].kind == nkSym and
@@ -3275,14 +3274,26 @@ proc semStmtList(c: PContext, n: PNode, flags: TExprFlags): PNode =
           localReport(c.config, n[j].info,
                       SemReport(kind: rsemUnreachableCode))
 
-  if result.kind != nkError and result.len == 1 and
-     # concept bodies should be preserved as a stmt list:
-     c.matchedConcept == nil and
-     # also, don't make life complicated for macros.
-     # they will always expect a proper stmtlist:
-     nfBlockArg notin n.flags and
-     result[0].kind != nkDefer:
-    result = result[0]
+  # unnest single statement, statement lists, except:
+  # - concept bodies should be preserved as a stmt list
+  # - don't extract defer
+  if c.matchedConcept == nil and result.kind != nkError:
+    case result.len
+    of 0:
+      result = c.graph.emptyNode
+      hasError = false
+    of 1:
+      case result[0].kind
+      of nkError:
+        result = result[0]
+      else:
+        discard
+    #   of nkDefer:
+    #     discard # don't break the defer's scoping
+    #   else:
+    #     result = result[0]
+    else:
+      discard
 
   when defined(nimfix):
     if result.kind == nkCommentStmt and not result.comment.isNil and

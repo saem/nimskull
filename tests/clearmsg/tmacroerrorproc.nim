@@ -1,5 +1,5 @@
 discard """
-  errormsg: "Expected a node of kind nnkCharLit, got nnkCommand"
+  errormsg: "Expected a node of kind nnkCharLit, got nnkSym"
   file: "tmacroerrorproc.nim"
   line: 13
 """

@@ -672,7 +672,6 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
           r.symbols[0].name.s,
           " is deprecated"
         )
-
       else:
         result = r.str
         if not r.sym.isNil:
@@ -687,14 +686,10 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
               s.owner.name.s,
               s.name.s,
             )
-
           elif s.kind == skModule and not s.constraint.isNil():
             result.addf("$1; $2 is deprecated", s.constraint.strVal, s.name.s)
-
           else:
             result.add(s.name.s, " is deprecated")
-
-
 
     of rsemThisPragmaRequires01Args:
       # FIXME remove this report kind, reuse "wrong number of arguments"
@@ -729,7 +724,6 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
       if len(r.expectedSymbolKind) == 1:
          for n in r.expectedSymbolKind:
            ask = n.toHumanStr
-
       else:
         ask = $r.expectedSymbolKind
 
@@ -784,7 +778,6 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
           result = "attempting to call undeclared routine: '$1'" % $r.str
         else:
           result = "attempting to call routine: '$1'$2" % [$r.str, $result]
-
       else:
         let sym = r.typ.typSym
         var typeHint = ""
@@ -795,15 +788,11 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
           #     x.foo is int
           discard
         else:
-
           typeHint = " for type " & getProcHeader(conf, sym)
 
         let suffix = if result.len > 0: " " & result else: ""
 
         result = "undeclared field: '$1'" % r.str & typeHint & suffix
-
-
-
 
     of rsemUndeclaredField:
       result =  "undeclared field: '$1' for type $2" % [
@@ -823,7 +812,6 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
         args.add(typeToString(r.ast[i].typ))
       args.add(")")
 
-
       result = "ambiguous call; both $1 and $2 match for: $3" % [
         getProcHeader(conf, r.symbols[0]),
         getProcHeader(conf, r.symbols[1]),
@@ -836,13 +824,11 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
           "if possible, rearrange your program's control flow to prevent it") % [
           r.ast.render]
 
-
     of rsemAmbiguousIdent:
       result = "ambiguous identifier: '" & r.symstr & "' -- use one of the following:\n"
-      var i = 0
-      for sym in r.symbols:
+      for i, sym in r.symbols.pairs:
         result.add(
-          tern(0 < i, "\n", ""),
+          tern(i > 0, "\n", ""),
           "  ",
           sym.owner.name.s,
           ".",
@@ -850,9 +836,6 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
           ": ",
           sym.typ.render()
         )
-
-        inc i
-
 
     of rsemStaticOutOfBounds, rsemVmIndexError:
       let (i, a, b) = r.indexSpec
@@ -946,7 +929,6 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
     of rsemExpectedOrdinal:
       if not r.ast.isNil and r.ast.kind == nkBracket:
         result.add "expected ordinal value for array index, got '$1'" % r.wrongNode.render
-
       else:
         result = "ordinal type expected"
 
@@ -1344,6 +1326,10 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
       var n = r.ast
       while n.kind in skipForDiscardable:
         n = n.lastSon
+
+      debug n.typ
+      # echo conf.`$`(n.info)
+      # echo n.render
 
       result.add(
         "expression '",
