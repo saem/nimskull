@@ -2533,7 +2533,10 @@ proc matchesAux(c: PContext, n: PNode, m: var TCandidate, marker: var IntSet) =
   ## updated with the produced results.
 
   template noMatch() =
-    c.mergeShadowScope #merge so that we don't have to resem for later overloads
+    if not m.call.isError:
+      # merge so that we don't have to resem for later overloads, except
+      # nkError currently doesn't play well with this
+      c.mergeShadowScope
     m.state = csNoMatch
     m.error.firstMismatch.pos = a
     m.error.firstMismatch.arg = n[a]
@@ -2543,8 +2546,9 @@ proc matchesAux(c: PContext, n: PNode, m: var TCandidate, marker: var IntSet) =
   template noMatchDueToError() =
     ## found an nkError along the way so wrap the call in an error, do not use
     ## if the legacy `localReport`s etc are being used.
-    m.call = wrapError(c.config, m.call)
-    noMatch()
+    {.line.}:
+      m.call = wrapError(c.config, m.call)
+      noMatch()
 
   template checkConstraint(n: untyped) {.dirty.} =
     if not formal.constraint.isNil:
