@@ -92,6 +92,7 @@ proc pickBestCandidate(c: PContext,
       sym = nextOverloadIter(o, c, headSymbol)
       scope = o.lastOverloadScope
   var z: TCandidate
+  let nBackup = copyTree(n)
   while sym != nil:
     if sym.kind notin filter:
       sym = nextOverloadIter(o, c, headSymbol)
@@ -100,7 +101,7 @@ proc pickBestCandidate(c: PContext,
     determineType(c, sym)
     initCandidate(c, z, sym, initialBinding, scope)
     if c.currentScope.symbols.counter == counterInitial or syms.len != 0:
-      matches(c, n, z)
+      matches(c, n, nBackup, z)
       if z.state == csMatch:
         # little hack so that iterators are preferred over everything else:
         if sym.kind == skIterator:

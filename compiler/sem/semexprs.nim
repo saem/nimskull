@@ -1062,13 +1062,13 @@ proc semObjConstr(c: PContext, n: PNode, flags: TExprFlags): PNode
 proc resolveIndirectCall(c: PContext; n: PNode;
                          t: PType): TCandidate =
   initCandidate(c, result, t)
-  matches(c, n, result)
+  matches(c, n, copyTree(n), result)
   if result.state != csMatch:
     # try to deref the first argument:
     if implicitDeref in c.features and canDeref(n):
       n[1] = genDeref(n[1])
       initCandidate(c, result, t)
-      matches(c, n, result)
+      matches(c, n, copyTree(n), result)
 
 proc bracketedMacro(n: PNode): PSym =
   if n.len >= 1 and n[0].kind == nkSym:

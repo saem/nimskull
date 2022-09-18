@@ -2558,23 +2558,40 @@ proc findFirstArgBlock(m: var TCandidate, n: PNode): int =
       break
 
 
-proc matchesAux(c: PContext, n: PNode, m: var TCandidate, marker: var IntSet) =
+proc matchesAux(c: PContext, n, nBackup: PNode, m: var TCandidate, marker: var IntSet) =
   ## used to match a call `n` with a candidate `m`, noting matched formal
   ## params in `marker` by position. `m` and `marker` are out parameters and
   ## updated with the produced results.
 
   assert n.kind != nkError # not producing a PNode means nkError isn't handled
+  var hasError = false
 
   template noMatch() =
-    if not m.call.isError and not n[a].isErrorLike:
+    if hasError or m.call.isError or m.call[^1].isErrorLike:
+      # nkError currently doesn't play well with mergingShadowScope
+      c.closeShadowScope
+    else:
       # merge so that we don't have to resem for later overloads, except
-      # nkError currently doesn't play well with this
       c.mergeShadowScope
+
     m.state = csNoMatch
     m.error.firstMismatch.pos = a
     m.error.firstMismatch.arg = n[a]
     m.error.firstMismatch.formal = formal
     return
+
+  template noMatchWithRestoreStmt(restoreStmt: untyped) {.dirty.} =
+    ## encountered and error when doing a prepareOperand on `n` or its children
+    ## do a `noMatch`, ensure we abandon the shadow scope, and run the restore
+    ## expression
+    hasError = true
+    noMatch()
+  
+  template noMatchAndRestoreIndexA() {.dirty.} =
+    ## same as `noMatchWithRestoreStmt`, except hard codes the restore statment
+    ## to `n[a] = nBackup[a]` 
+    noMatchWithRestoreStmt:
+      n[a] = nBackup[a] # restore original nodes to avoid error node polution
 
   template noMatchDueToError() =
     ## found an nkError along the way so wrap the call in an error, do not use
@@ -2663,8 +2680,8 @@ proc matchesAux(c: PContext, n: PNode, m: var TCandidate, marker: var IntSet) =
           rsemExpectedIdentifier, n[a],
           str = "named parameter has to be an identifier"
         ))
-        noMatch()
-      
+        noMatchAndRestoreIndexA()
+
       formal = getNamedParamFromList(m.callee.n, n[a][0].ident)
       
       if formal.isNil or formal.isError:
@@ -2690,11 +2707,12 @@ proc matchesAux(c: PContext, n: PNode, m: var TCandidate, marker: var IntSet) =
       arg = paramTypesMatch(m, formal.typ, n[a].typ, n[a][1])
       m.error.firstMismatch.kind = kTypeMismatch
       
-      if arg == nil or arg.isErrorLike:
+      if n[a][1].isErrorLike: # named param's value is an error
+        noMatchWithRestoreStmt():
+          n[a][1] = nBackup[a][1]
+      elif arg == nil or arg.isErrorLike:
         noMatch()
-      elif n[a][1].isErrorLike: # named param's value is an error
-        noMatchDueToError()
-      
+
       checkConstraint(n[a][1])  # will update `m` with info
       
       if m.baseTypeMatch:
@@ -2726,6 +2744,7 @@ proc matchesAux(c: PContext, n: PNode, m: var TCandidate, marker: var IntSet) =
             m.call.add copyTree(n[a])
 
           if n[a].isError:
+            n[a] = nBackup[a]
             noMatchDueToError()  # we just inserted an error node into m.call
         elif formal != nil and formal.typ.kind == tyVarargs: # extra varargs
           m.error.firstMismatch.kind = kTypeMismatch
@@ -2737,15 +2756,15 @@ proc matchesAux(c: PContext, n: PNode, m: var TCandidate, marker: var IntSet) =
           n[a] = prepareOperand(c, formal.typ, n[a])
           arg = paramTypesMatch(m, formal.typ, n[a].typ, n[a])
 
-          if arg != nil and arg.kind != nkError and # valid argument
+          if n[a].isErrorLike:                        # invalid operand
+            noMatchAndRestoreIndexA()
+          elif arg != nil and arg.kind != nkError and # valid argument
              m.baseTypeMatch and                    # match type in `varargs[T]`
              container != nil:                      # container must exist
             
             container.add arg
             incrIndexType(container.typ)
             checkConstraint(n[a])
-          elif n[a].isErrorLike:                    # invalid operand
-            noMatchDueToError()
           else:
             noMatch()
         else:
@@ -2790,11 +2809,10 @@ proc matchesAux(c: PContext, n: PNode, m: var TCandidate, marker: var IntSet) =
           n[a] = prepareOperand(c, formal.typ, n[a])
           arg = paramTypesMatch(m, formal.typ, n[a].typ, n[a])
 
-          if arg == nil or arg.isErrorLike: # invalid arg
+          if n[a].isErrorLike:              # invalid operand
+            noMatchAndRestoreIndexA()
+          elif arg == nil or arg.isErrorLike: # invalid arg
             noMatch()
-          elif n[a].isErrorLike:            # invalid operand
-            noMatch()
-            # noMatchDueToError()
 
           if m.baseTypeMatch: # var args
             assert formal.typ.kind == tyVarargs
@@ -2850,13 +2868,18 @@ proc semFinishOperands*(c: PContext, n: PNode) =
   for i in 1..<n.len:
     n[i] = prepareOperand(c, n[i])
 
-proc partialMatch*(c: PContext, n: PNode, m: var TCandidate) =
+proc partialMatch*(c: PContext, n, nBackup: PNode, m: var TCandidate) =
   # for 'suggest' support:
   var marker = initIntSet()
-  matchesAux(c, n, m, marker)
+  matchesAux(c, n, nBackup, m, marker)
 
-proc matches*(c: PContext, n: PNode, m: var TCandidate) =
+proc matches*(c: PContext, n, nBackup: PNode, m: var TCandidate) =
   addInNimDebugUtils(c.config, "matches", n, m)
+
+  if n.kind == nkError:
+    m.state = csNoMatch
+    m.call = n
+    return
 
   if m.magic in {mArrGet, mArrPut}:
     m.state = csMatch
@@ -2872,7 +2895,7 @@ proc matches*(c: PContext, n: PNode, m: var TCandidate) =
     return
   
   var marker = initIntSet()
-  matchesAux(c, n, m, marker)
+  matchesAux(c, n, nBackup, m, marker)
 
   if m.state == csNoMatch:
     return

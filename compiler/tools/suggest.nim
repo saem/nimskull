@@ -339,18 +339,20 @@ proc nameFits(c: PContext, s: PSym, n: PNode): bool =
   else: return false
   result = opr.id == s.name.id
 
-proc argsFit(c: PContext, candidate: PSym, n: PNode): bool =
+proc argsFit(c: PContext, candidate: PSym, n, nBackup: PNode): bool =
   case candidate.kind
   of OverloadableSyms:
     var m = newCandidate(c, candidate, nil)
-    sigmatch.partialMatch(c, n, m)
+    sigmatch.partialMatch(c, n, nBackup, m)
     result = m.state != csNoMatch
   else:
     result = false
 
 proc suggestCall(c: PContext, n: PNode, outputs: var Suggestions) =
-  let info = n.info
-  wholeSymTab(filterSym(it, nil, pm) and nameFits(c, it, n) and argsFit(c, it, n),
+  let
+    info = n.info
+    nBackup = copyTree(n)
+  wholeSymTab(filterSym(it, nil, pm) and nameFits(c, it, n) and argsFit(c, it, n, nBackup),
               ideCon)
 
 proc suggestVar(c: PContext, n: PNode, outputs: var Suggestions) =

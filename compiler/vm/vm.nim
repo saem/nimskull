@@ -1522,6 +1522,8 @@ proc rawExecute(c: var TCtx, pc: var int, tos: var StackFrameIndex): RegisterInd
       if (imm and nimNodeFlag) != 0:
         # TODO: there should be a standalone opcode for NimNode.len
         # used by mNLen (NimNode.len)
+        if regs[rb].nimNode.kind == nkError:
+          echo "error node id: ", regs[rb].nimNode.id
         regs[ra].intVal = regs[rb].nimNode.safeLen - high
       else:
         checkHandle(regs[rb])
