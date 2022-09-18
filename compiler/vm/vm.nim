@@ -39,6 +39,7 @@ import
                  # handling
   ],
   compiler/utils/[
+    astrepr,
     debugutils,
     int128,
     btrees,
@@ -1523,7 +1524,9 @@ proc rawExecute(c: var TCtx, pc: var int, tos: var StackFrameIndex): RegisterInd
         # TODO: there should be a standalone opcode for NimNode.len
         # used by mNLen (NimNode.len)
         if regs[rb].nimNode.kind == nkError:
-          echo "error node id: ", regs[rb].nimNode.id
+          echo "error node id: ", regs[rb].nimNode.id,
+               " from file: ", c.config $ regs[rb].nimNode.info,
+               " trace:\n", cli_reporter.reportBody(c.config, c.createStackTrace(tos, pc))
         regs[ra].intVal = regs[rb].nimNode.safeLen - high
       else:
         checkHandle(regs[rb])

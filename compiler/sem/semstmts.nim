@@ -2847,20 +2847,27 @@ proc semProcAux(c: PContext, n: PNode, kind: TSymKind,
 
       s.flags.incl {sfForward, sfWasForwarded}
     elif sfBorrow in s.flags: semBorrow(c, n, s)
+  
   sideEffectsCheck(c, s)
   closeScope(c)           # close scope for parameters
   # c.currentScope = oldScope
   popOwner(c)
-  if n[patternPos].kind != nkEmpty:
-    c.patterns.add(s)
-  if isAnon:
-    n.transitionSonsKind(nkLambda)
-    result.typ = s.typ
-    if optOwnedRefs in c.config.globalOptions:
-      result.typ = makeVarType(c, result.typ, tyOwned)
-  elif isTopLevel(c) and s.kind != skIterator and s.typ.callConv == ccClosure:
-    localReport(c.config, s.info, reportSym(
-      rsemUnexpectedClosureOnToplevelProc, s))
+
+  if result[bodyPos].kind == nkError:
+    result = c.config.wrapError(result)
+  else:
+    if n[patternPos].kind != nkEmpty:
+      c.patterns.add(s)
+
+    if isAnon:
+      n.transitionSonsKind(nkLambda)
+      result.typ = s.typ
+      
+      if optOwnedRefs in c.config.globalOptions:
+        result.typ = makeVarType(c, result.typ, tyOwned)
+    elif isTopLevel(c) and s.kind != skIterator and s.typ.callConv == ccClosure:
+      localReport(c.config, s.info, reportSym(
+        rsemUnexpectedClosureOnToplevelProc, s))
 
 proc determineType(c: PContext, s: PSym) =
   if s.typ != nil: return
