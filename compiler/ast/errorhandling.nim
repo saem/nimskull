@@ -206,8 +206,11 @@ iterator walkErrors*(config: ConfigRef; n: PNode): PNode =
 
     assert(
       not e.reportId.isEmpty(),
-      "Error node of kind" & $e.errorKind & "created in " &
-        $n.compilerInstInfo() & " has empty report id")
+      "Error node (id: " & $e.id & ") of kind " & $e.errorKind &
+        " created in " & $e.compilerInstInfo() &
+        " has an empty report id, within node (id : " & $n.id &
+        ") created in " & $n.compilerInstInfo() & " from source: " & 
+        config $ n.info)
 
     yield e
 

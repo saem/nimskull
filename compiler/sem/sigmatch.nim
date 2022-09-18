@@ -1992,6 +1992,10 @@ proc isLValue(c: PContext; n: PNode): bool {.inline.} =
 
 proc userConvMatch(c: PContext, m: var TCandidate, f, a: PType,
                    arg: PNode): PNode =
+  if arg.isError:
+    result = arg
+    return
+
   result = nil
 
   for i in 0..<c.converters.len:
@@ -2122,6 +2126,10 @@ template matchesVoidProc(t: PType): bool =
 
 proc paramTypesMatchAux(m: var TCandidate, f, a: PType,
                         argSemantized: PNode): PNode =
+  if argSemantized.isError:
+    result = argSemantized
+    return
+
   var
     fMaybeStatic = f.skipTypes({tyDistinct})
     arg = argSemantized
@@ -2213,9 +2221,17 @@ proc paramTypesMatchAux(m: var TCandidate, f, a: PType,
       result = c.semInferredLambda(c, m.bindings, arg)
     of nkSym:
       let inferred = c.semGenerateInstance(c, arg.sym, m.bindings, arg.info)
-      result = newSymNode(inferred, arg.info)
+      
+      result =
+        if inferred.isError:
+          inferred.ast
+        else:
+          newSymNode(inferred, arg.info)
     else:
       result = nil
+      return
+
+    if result.isError:
       return
 
     inc(m.convMatches)
@@ -2258,6 +2274,9 @@ proc paramTypesMatchAux(m: var TCandidate, f, a: PType,
       result = newSymNode(inferred, arg.info)
     else:
       result = nil
+      return
+
+    if result.isError:
       return
 
     case r
@@ -2338,31 +2357,37 @@ proc paramTypesMatchAux(m: var TCandidate, f, a: PType,
         result = localConvMatch(c, m, f, a, arg)
       else:
         r = typeRel(m, base(f), a)
+        
+        if arg.isError:
+          result = arg
+          m.baseTypeMatch = false
+          return
+
         case r
         of isGeneric:
           inc(m.convMatches)
           result = copyTree(arg)
           result.typ = getInstantiatedType(c, arg, m, base(f))
-          m.baseTypeMatch = true
+          m.baseTypeMatch = result.kind != nkError
         of isFromIntLit:
           inc(m.intConvMatches, 256)
           result = implicitConv(nkHiddenStdConv, f[0], arg, m, c)
-          m.baseTypeMatch = true
+          m.baseTypeMatch = result.kind != nkError
         of isEqual:
           inc(m.convMatches)
           result = copyTree(arg)
-          m.baseTypeMatch = true
+          m.baseTypeMatch = result.kind != nkError
         of isSubtype: # bug #4799, varargs accepting subtype relation object
           inc(m.subtypeMatches)
           if base(f).kind == tyTypeDesc:
             result = arg
           else:
             result = implicitConv(nkHiddenSubConv, base(f), arg, m, c)
-          m.baseTypeMatch = true
+          m.baseTypeMatch = result.kind != nkError
         else:
           result = userConvMatch(c, m, base(f), a, arg)
           if result != nil:
-            m.baseTypeMatch = true
+            m.baseTypeMatch = result.kind != nkError
 
 proc paramTypesMatch*(m: var TCandidate, f, a: PType,
                       arg: PNode): PNode =
@@ -2422,6 +2447,7 @@ proc paramTypesMatch*(m: var TCandidate, f, a: PType,
       markUsed(m.c, arg.info, arg[best].sym)
       onUse(arg.info, arg[best].sym)
       result = paramTypesMatchAux(m, f, arg[best].typ, arg[best])
+  
   when false:
     if m.calleeSym != nil and m.calleeSym.name.s == "[]":
       echo m.c.config $ arg.info, " for ", m.calleeSym.name.s, " ", m.c.config $ m.calleeSym.info
@@ -2468,10 +2494,12 @@ proc prepareOperand(c: PContext; a: PNode): PNode =
     result = a
     considerGenSyms(c, result)
 
-proc prepareNamedParam(a: PNode; c: PContext) =
+proc prepareNamedParam(a: PNode; c: PContext): PNode =
   ## set the correct ident node, or nkError, in the 0th position for this
   ## named param
   doAssert not a.isErrorLike, "named param is error like"
+
+  result = copyTree a
 
   case a.kind
   of nkExprEqExpr:
@@ -2482,11 +2510,14 @@ proc prepareNamedParam(a: PNode; c: PContext) =
       let
         info = a[0].info
         (i, err) = considerQuotedIdent(c, a[0])
-      a[0] =
+      result[0] =
         if err.isNil():
           newIdentNode(i, info)   # xxx: going "backwards" to an ident, fishy
         else:
           err
+      
+      if err != nil:
+        result = c.config.wrapError(result)
   else:
     c.config.internalError("named param must be exprEqExpr, got: " & $a.kind)
 
@@ -2532,8 +2563,10 @@ proc matchesAux(c: PContext, n: PNode, m: var TCandidate, marker: var IntSet) =
   ## params in `marker` by position. `m` and `marker` are out parameters and
   ## updated with the produced results.
 
+  assert n.kind != nkError # not producing a PNode means nkError isn't handled
+
   template noMatch() =
-    if not m.call.isError:
+    if not m.call.isError and not n[a].isErrorLike:
       # merge so that we don't have to resem for later overloads, except
       # nkError currently doesn't play well with this
       c.mergeShadowScope
@@ -2623,8 +2656,8 @@ proc matchesAux(c: PContext, n: PNode, m: var TCandidate, marker: var IntSet) =
       m.error.firstMismatch.kind = kUnknownNamedParam
       
       # check if m.callee has such a param:
-      prepareNamedParam(n[a], c)
-      
+      n[a] = prepareNamedParam(n[a], c)
+
       if n[a].kind == nkError or n[a][0].kind != nkIdent:
         localReport(c.config, n[a].info, reportAst(
           rsemExpectedIdentifier, n[a],
@@ -2691,6 +2724,9 @@ proc matchesAux(c: PContext, n: PNode, m: var TCandidate, marker: var IntSet) =
                                     copyTree(n[a]), m, c)
           else:
             m.call.add copyTree(n[a])
+
+          if n[a].isError:
+            noMatchDueToError()  # we just inserted an error node into m.call
         elif formal != nil and formal.typ.kind == tyVarargs: # extra varargs
           m.error.firstMismatch.kind = kTypeMismatch
           # beware of the side-effects in 'prepareOperand'! So only do it for
@@ -2757,7 +2793,8 @@ proc matchesAux(c: PContext, n: PNode, m: var TCandidate, marker: var IntSet) =
           if arg == nil or arg.isErrorLike: # invalid arg
             noMatch()
           elif n[a].isErrorLike:            # invalid operand
-            noMatchDueToError()
+            noMatch()
+            # noMatchDueToError()
 
           if m.baseTypeMatch: # var args
             assert formal.typ.kind == tyVarargs

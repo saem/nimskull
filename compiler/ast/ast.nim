@@ -37,7 +37,7 @@ export ast_types, ast_idgen, ast_query, int128, ast_parsed_types
 var ggDebug* {.deprecated.}: bool ## convenience switch for trying out things
 
 when defined(useNodeIds):
-  const nodeIdToDebug* = -1 # 2322968
+  const nodeIdToDebug* = 5718934 # 2322968
 
 proc addAllowNil*(father, son: Indexable) {.inline.} =
   father.sons.add(son)
@@ -465,6 +465,7 @@ proc copyNode*(src: PNode): PNode =
     discard
 
 template transitionNodeKindCommon(k: TNodeKind) =
+  assert n.kind != nkError
   let obj {.inject.} = n[]
   n[] = TNode(id: obj.id, kind: k, typ: obj.typ, info: obj.info,
               flags: obj.flags)
