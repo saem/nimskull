@@ -539,7 +539,11 @@ proc getReport*(conf: ConfigRef, report: ReportId): Report =
 
 proc getReport*(conf: ConfigRef, err: PNode): Report =
   ## Get postponed report from the nkError node
-  conf.getReport(err.reportId)
+  result =
+    case err.errorData.kind
+    of errDataSem: err.semErr
+    of errDataVm:  err.vmErr
+  assert not result.isEmpty(), $result
 
 template store*(conf: ConfigRef, report: ReportTypes): untyped =
   ## Add report to the postponed list, return new report ID

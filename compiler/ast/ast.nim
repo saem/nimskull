@@ -486,7 +486,7 @@ template copyNodeImpl(dst, src, processSonsStmt) =
   of nkEmpty, nkNone: discard # no children, nothing to do
   of nkError:
     dst.kids = src.kids
-    dst.reportId = src.reportId
+    dst.errorData = src.errorData
   else: processSonsStmt
 
 proc copyNode*(src: PNode): PNode =

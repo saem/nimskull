@@ -82,7 +82,7 @@ proc newError*(
     conf: ConfigRef;
     wrongNode: PNode;
     errorKind: ReportKind,
-    report: ReportId,
+    errData: AstErrorData,
     inst: InstantiationInfo,
     args: varargs[PNode]
   ): PNode =
@@ -95,14 +95,13 @@ proc newError*(
   )
 
   assert wrongNode != nil, "can't have a nil node for `wrongNode`"
-  assert not report.isEmpty(), $report
 
   result = newNodeIT(
     nkError,
     wrongNode.info,
     newType(tyError, ItemId(module: -2, item: -1), nil)
   )
-  result.reportId = report
+  result.errorData = case errData
 
   addInNimDebugUtilsError(conf, wrongNode, result)
 

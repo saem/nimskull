@@ -23,8 +23,7 @@ import std/[options, packedsets]
 import
   compiler/vm/vm_enums,
   compiler/ast/ast_types,
-  compiler/utils/[int128, platform],
-  compiler/sem/nilcheck_enums
+  compiler/utils/[int128, platform]
 
 export
   ast_types,
@@ -41,57 +40,6 @@ type InstantiationInfo* = typeof(instantiationInfo())
 # something (and that would be almost all modules)
 import report_enums
 export report_enums
-
-type
-  ReportLineInfo* = object
-    ## Location expressed in terms of a single point in the file
-    file*: string
-    line*: uint16
-    col*: int16
-
-  ReportSeverity* = enum
-    rsevDebug = "Debug" ## Internal compiler debug information
-
-    rsevHint = "Hint" ## User-targeted hint
-    rsevWarning = "Warning" ## User-targeted warnings
-    rsevError = "Error" ## User-targeted error
-
-    rsevFatal = "Fatal"
-    rsevTrace = "Trace" ## Additional information about compiler actions -
-    ## external commands mostly.
-
-  ReportContextKind* = enum
-    sckInstantiationOf
-    sckInstantiationFrom
-
-
-  ReportContext* = object
-    location*: TLineInfo ## Report context instantiation
-    case kind*: ReportContextKind
-      of sckInstantiationOf:
-        entry*: PSym ## Instantiated entry symbol
-
-      of sckInstantiationFrom:
-        discard
-
-  ReportBase* = object of RootObj
-    context*: seq[ReportContext]
-
-    location*: Option[TLineInfo] ## Location associated with report. Some
-    ## reports do not have any locations associated with them (most (but
-    ## not all, due to `gorge`) of the external command executions, sem
-    ## tracing etc). Some reports might have additional associated location
-    ## information (view type sealing reasons) - those are handled on the
-    ## per-report-kind basis.
-
-    reportInst*: ReportLineInfo ## Information about instantiation location
-    ## of the reports - present for all reports in order to track their
-    ## origin withing the compiler.
-
-    reportFrom*: ReportLineInfo ## Information about submit location of the
-    ## report. Contains information about the place where report was
-    ## /submitted/ to the system - sometimes a report is created, modified
-    ## to add new information, and only then put into the pipeline.
 
 type
   LexerReport* = object of ReportBase
@@ -130,224 +78,6 @@ func severity*(parser: ParserReport): ReportSeverity =
     of rparWarningKinds: rsevWarning
     of rparErrorKinds: rsevError
 
-type
-  SemGcUnsafetyKind* = enum
-    sgcuCallsUnsafe
-    sgcuAccessesGcGlobal
-    sgcuIndirectCallVia
-    sgcuIndirectCallHere
-
-  SemSideEffectCallKind* = enum
-    ssefUsesGlobalState
-    ssefCallsSideEffect
-    ssefCallsViaHiddenIndirection
-    ssefCallsViaIndirection
-    ssefParameterMutation
-
-  SemTypeMismatch* = object
-    formalTypeKind*: set[TTypeKind]
-    actualType*, formalType*: PType
-
-  SemDiagnostics* = object
-    diagnosticsTarget*: PSym ## The concept sym that didn't match
-    reports*: seq[SemReport] ## The reports that explain why the concept didn't match
-
-  MismatchInfo* = object
-    kind*: MismatchKind ## reason for mismatch
-    pos*: int           ## position of provided argument that mismatches. This doesn't always correspond to
-                        ## the *expression* subnode index (e.g. `.=`) nor the *target parameter* index (varargs)
-    arg*: PNode         ## the node of the mismatching provided argument
-    formal*: PSym       ## parameter that mismatches against provided argument
-                        ## its position can differ from `arg` because of varargs
-
-  SemCallMismatch* = object
-    ## Description of the single candidate mismatch. This type is later
-    ## used to construct meaningful type mismatch message, and must contain
-    ## all the necessary information to provide meaningful sorting,
-    ## collapse and other operations.
-    target*: PSym ## Procedure that was tried for an overload resolution
-    firstMismatch*: MismatchInfo ## mismatch info for better error messages
-
-    diag*: SemDiagnostics
-    diagnosticsEnabled*: bool ## Set by sfExplain. efExplain or notFoundError ignore this
-
-  SemSpellCandidate* = object
-    dist*: int
-    depth*: int
-    sym*: PSym
-    isLocal*: bool
-
-  SemNilHistory* = object
-    ## keep history for each transition
-    info*: TLineInfo ## the location
-    nilability*: Nilability ## the nilability
-    kind*: NilTransition ## what kind of transition was that
-    node*: PNode ## the node of the expression
-
-  SemReport* = object of ReportBase
-    ast*: PNode
-    typ*: PType
-    sym*: PSym
-    str*: string
-    spellingCandidates*: seq[SemSpellCandidate]
-
-    case kind*: ReportKind
-      of rsemDuplicateModuleImport:
-        previous*: PSym
-
-      of rsemCannotInstantiateWithParameter:
-        arguments*: tuple[got, expected: seq[PNode]]
-
-      of rsemUnavailableTypeBound:
-        missingTypeBoundElaboration*: tuple[
-          anotherRead: Option[TLineInfo],
-          tryMakeSinkParam: bool
-        ]
-
-      of rsemDuplicateCaseLabel:
-        overlappingGroup*: PNode
-
-      of rsemCannotBorrow:
-        borrowPair*: tuple[mutatedHere, connectedVia: TLineInfo]
-
-      of rsemXCannotRaiseY:
-        raisesList*: PNode
-
-      of rsemUncollectableRefCycle:
-        cycleField*: PNode
-
-      of rsemStrictNotNilExpr, rsemStrictNotNilResult:
-        nilIssue*: Nilability
-        nilHistory*: seq[SemNilHistory]
-
-      of rsemExpectedIdentifierInExpr,
-         rsemExpectedOrdinal,
-         rsemIdentExpectedInExpr,
-         rsemFieldOkButAssignedValueInvalid:
-        wrongNode*: PNode
-
-      of rsemWarnGcUnsafeListing, rsemErrGcUnsafeListing:
-        gcUnsafeTrace*: tuple[
-          isUnsafe: PSym,
-          unsafeVia: PSym,
-          unsafeRelation: SemGcUnsafetyKind,
-        ]
-
-      of rsemHasSideEffects:
-        sideEffectTrace*: seq[tuple[
-          isUnsafe: PSym,
-          unsafeVia: PSym,
-          trace: SemSideEffectCallKind,
-          location: TLineInfo,
-          level: int
-        ]]
-
-        sideEffectMutateConnection*: TLineInfo
-
-      of rsemEffectsListingHint:
-        effectListing*: tuple[tags, exceptions: seq[PType]]
-
-      of rsemReportCountMismatch,
-         rsemWrongNumberOfVariables:
-        countMismatch*: tuple[expected, got: Int128]
-
-      of rsemInvalidExtern:
-        externName*: string
-
-      of rsemWrongIdent:
-        expectedIdents*: seq[string]
-
-
-      of rsemStaticIndexLeqUnprovable, rsemStaticIndexGeProvable:
-        rangeExpression*: tuple[a, b: PNode]
-
-      of rsemExprHasNoAddress:
-        isUnsafeAddr*: bool
-
-      of rsemUndeclaredIdentifier,
-         rsemCallNotAProcOrField,
-           :
-        potentiallyRecursive*: bool
-
-        explicitCall*: bool ## Whether `rsemCallNotAProcOrField` error was
-        ## caused by expression with explicit dot call: `obj.cal()`
-        unexpectedCandidate*: seq[PSym] ## Symbols that are syntactically
-        ## valid in this context, but semantically are not allowed - for
-        ## example `object.iterator()` call outside of the `for` loop.
-
-      of rsemDisjointFields,
-         rsemUnsafeRuntimeDiscriminantInit,
-         rsemConflictingDiscriminantInit,
-         rsemMissingCaseBranches,
-         rsemConflictingDiscriminantValues:
-        fieldMismatches*: tuple[first, second: seq[PSym]]
-        nodes*: seq[PNode]
-
-      of rsemCannotInstantiate:
-        ownerSym*: PSym
-
-      of rsemReportTwoSym + rsemReportOneSym + rsemReportListSym:
-        symbols*: seq[PSym]
-
-      of rsemExpandMacro, rsemPattern, rsemExpandArc:
-        expandedAst*: PNode
-
-      of rsemLockLevelMismatch, rsemMethodLockMismatch:
-        anotherMethod*: PSym
-        lockMismatch*: tuple[expected, got: string]
-
-      of rsemTypeMismatch,
-         rsemSuspiciousEnumConv,
-         rsemTypeKindMismatch,
-         rsemSemfoldInvalidConversion,
-         rsemCannotConvertTypes,
-         rsemImplicitObjConv,
-         rsemIllegalConversion,
-         rsemConceptInferenceFailed,
-         rsemCannotCastTypes,
-         rsemGenericTypeExpected,
-         rsemCannotBeOfSubtype,
-         rsemDifferentTypeForReintroducedSymbol:
-        typeMismatch*: seq[SemTypeMismatch]
-
-
-      of rsemSymbolKindMismatch:
-        expectedSymbolKind*: set[TSymKind]
-
-      of rsemTypeNotAllowed:
-        allowedType*: tuple[
-          allowed: PType,
-          actual: PType,
-          kind: TSymKind,
-          allowedFlags: TTypeAllowedFlags
-        ]
-
-      of rsemCallTypeMismatch, rsemNonMatchingCandidates:
-        callMismatches*: seq[SemCallMismatch] ## Description of all the
-        ## failed candidates.
-
-      of rsemStaticOutOfBounds:
-        indexSpec*: tuple[usedIdx, minIdx, maxIdx: Int128]
-
-
-
-      of rsemProcessing:
-        processing*: tuple[
-          isNimscript: bool,
-          importStackLen: int,
-          moduleStatus: string,
-          fileIdx: FileIndex
-        ]
-
-      of rsemLinterReport, rsemLinterReportUse:
-        info*: TLineInfo
-        linterFail*: tuple[wanted, got: string]
-
-      of rsemDiagnostics:
-        diag*: SemDiagnostics
-
-      else:
-        discard
 
 func severity*(report: SemReport): ReportSeverity =
   case SemReportKind(report.kind):
@@ -400,29 +130,6 @@ func reportSym*(
   ): SemReport =
 
   SemReport(kind: kind, ast: ast, str: str, typ: typ, sym: sym)
-
-type
-  VMReport* = object of ReportBase
-    ast*: PNode
-    typ*: PType
-    str*: string
-    sym*: PSym
-    case kind*: ReportKind
-      of rvmStackTrace:
-        currentExceptionA*, currentExceptionB*: PNode
-        traceReason*: ReportKind
-        stacktrace*: seq[tuple[sym: PSym, location: TLineInfo]]
-        skipped*: int
-
-      of rvmCannotCast:
-        typeMismatch*: seq[SemTypeMismatch]
-
-      of rvmIndexError:
-        indexSpec*: tuple[usedIdx, minIdx, maxIdx: Int128]
-
-      else:
-        discard
-
 
 func severity*(vm: VMReport): ReportSeverity =
   case VMReportKind(vm.kind):
@@ -814,19 +521,18 @@ func reportFrom*(report: Report): ReportLineInfo =
   eachCategory(report, reportFrom)
 
 func context*(report: Report): seq[ReportContext] =
-  eachCategory(report, context)
+  # refactor: this shouldn't be on report
+  case report.category:
+    of repVM:  report.vmReport.context
+    of repSem: report.semReport.context
+    else:      @[]
 
 func `context=`*(report: var Report, context: seq[ReportContext]) =
+  # refactor: this shouldn't be on report
   case report.category:
-    of repLexer:    report.lexReport.context = context
-    of repParser:   report.parserReport.context = context
-    of repCmd:      report.cmdReport.context = context
-    of repSem:      report.semReport.context = context
-    of repVM:       report.vmReport.context = context
-    of repDebug:    report.debugReport.context = context
-    of repInternal: report.internalReport.context = context
-    of repBackend:  report.backendReport.context = context
-    of repExternal: report.externalReport.context = context
+    of repSem: report.semReport.context = context
+    of repVM:  report.vmReport.context = context
+    else:      discard
 
 func `reportFrom=`*(report: var Report, loc: ReportLineInfo) =
   case report.category:
