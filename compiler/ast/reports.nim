@@ -60,6 +60,7 @@ type
     rsevTrace = "Trace" ## Additional information about compiler actions -
     ## external commands mostly.
 
+<<<<<<< HEAD
   ReportContextKind* = enum
     sckInstantiationOf
     sckInstantiationFrom
@@ -73,9 +74,9 @@ type
       of sckInstantiationFrom:
         discard
 
+=======
+>>>>>>> 6919ad44e (context is not on sem and vm only)
   ReportBase* = object of RootObj
-    context*: seq[ReportContext]
-
     location*: Option[TLineInfo] ## Location associated with report. Some
     ## reports do not have any locations associated with them (most (but
     ## not all, due to `gorge`) of the external command executions, sem
@@ -128,6 +129,28 @@ func severity*(parser: ParserReport): ReportSeverity =
     of rparHintKinds: rsevHint
     of rparWarningKinds: rsevWarning
     of rparErrorKinds: rsevError
+
+type
+  SemishReportBase* = object of ReportBase
+    ## Base for Sem and VM reports which may require additional contextual
+    ## data. Created as part of a refactor to extract diagnostic data out of
+    ## `reports` and put it back into the appropriate modules. The name is
+    ## temporary and ideally we no longer will need inheritance.
+    ## 
+    ## For refactor info: https://github.com/nim-works/nimskull/issues/443
+    context*: seq[ReportContext]
+
+  ReportContextKind* = enum
+    sckInstantiationOf
+    sckInstantiationFrom
+
+  ReportContext* = object
+    location*: TLineInfo ## Report context instantiation
+    case kind*: ReportContextKind
+      of sckInstantiationOf:
+        entry*: PSym ## Instantiated entry symbol
+      of sckInstantiationFrom:
+        discard
 
 type
   SemGcUnsafetyKind* = enum
@@ -183,7 +206,7 @@ type
     kind*: NilTransition ## what kind of transition was that
     node*: PNode ## the node of the expression
 
-  SemReport* = object of ReportBase
+  SemReport* = object of SemishReportBase
     ast*: PNode
     typ*: PType
     sym*: PSym
@@ -392,7 +415,7 @@ func reportSym*(
   SemReport(kind: kind, ast: ast, str: str, typ: typ, sym: sym)
 
 type
-  VMReport* = object of ReportBase
+  VMReport* = object of SemishReportBase
     ast*: PNode
     typ*: PType
     str*: string
@@ -415,7 +438,6 @@ type
 
       else:
         discard
-
 
 func severity*(vm: VMReport): ReportSeverity =
   case VMReportKind(vm.kind):
@@ -807,19 +829,19 @@ func reportFrom*(report: Report): ReportLineInfo =
   eachCategory(report, reportFrom)
 
 func context*(report: Report): seq[ReportContext] =
-  eachCategory(report, context)
+  case report.category
+  of repSem:
+    result = report.semReport.context
+  of repVM:
+    result = report.vmReport.context
+  else:
+    doAssert false, "context get on category: " & $report.category
 
 func `context=`*(report: var Report, context: seq[ReportContext]) =
-  case report.category:
-    of repLexer:    report.lexReport.context = context
-    of repParser:   report.parserReport.context = context
-    of repCmd:      report.cmdReport.context = context
-    of repSem:      report.semReport.context = context
-    of repVM:       report.vmReport.context = context
-    of repDebug:    report.debugReport.context = context
-    of repInternal: report.internalReport.context = context
-    of repBackend:  report.backendReport.context = context
-    of repExternal: report.externalReport.context = context
+  case report.category
+  of repSem: report.semReport.context = context
+  of repVM:  report.vmReport.context = context
+  else: doAssert false, "context get on category: " & $report.category
 
 func `reportFrom=`*(report: var Report, loc: ReportLineInfo) =
   case report.category:
@@ -839,13 +861,11 @@ func category*(kind: ReportKind): ReportCategory =
     of repInternalKinds: result = repInternal
     of repExternalKinds: result = repExternal
     of repCmdKinds:      result = repCmd
-
     of repLexerKinds:    result = repLexer
     of repParserKinds:   result = repParser
     of repSemKinds:      result = repSem
     of repBackendKinds:  result = repBackend
     of repVMKinds:       result = repVM
-
     of repNone: assert false, "'none' report does not have category"
 
 func severity*(
