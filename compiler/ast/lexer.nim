@@ -22,11 +22,11 @@ import
     pathutils,
   ],
   compiler/ast/[
+    numericbase,
     wordrecg,
     nimlexbase,
     llstream,
     lineinfos,
-    reports,
     idents
   ],
   std/[
@@ -35,8 +35,7 @@ import
     strutils
   ],
   compiler/front/[
-    options,
-    msgs
+    options
   ]
 
 const
@@ -96,6 +95,67 @@ type
 
   TokTypes* = set[TokType]
 
+  InstantiationInfo* = typeof(instantiationInfo())
+
+  LexerDiagKind* = enum
+    # internal errors begin
+    lexDiagInternalError ## lexer programming error
+    # internal errors end
+    
+    # users errors begin
+
+    # spacing
+    lexDiagMalformedUnderscores
+    lexDiagMalformedTrailingUnderscre
+    lexDiagInvalidToken
+    lexDiagNoTabs
+
+    # numbers
+    lexDiagInvalidIntegerPrefix
+    lexDiagInvalidIntegerSuffix
+    lexDiagNumberNotInRange
+    lexDiagExpectedHex
+    lexDiagInvalidIntegerLiteral
+
+    # char
+    lexDiagInvalidCharLiteral
+    lexDiagMissingClosingApostrophe
+    lexDiagInvalidUnicodeCodepoint
+
+    # string
+    lexDiagUnclosedTripleString
+    lexDiagUnclosedSingleString
+
+    # expectation mismatch
+    lexDiagExpectedToken
+
+    # comments
+    lexDiagUnclosedComment
+
+    # user errors end
+
+    # warnings begin
+    lexDiagDeprecatedOctalPrefix = "OctalEscape"
+    # warnings end
+
+    # linting hints begin
+    lexDiagLineTooLong = "LineTooLong"
+    lexDiagNameXShouldBeY = "Name"
+    # linting hints end
+
+  LexerDiag* = object
+    ## `Diag`nostic data from the Lexer, mostly errors
+    msg*: string
+    location: TLineInfo         ## diagnostic location
+    instLoc*: InstantiationInfo ## instantiation in lexer's source
+    case kind*: LexerDiagKind:
+    of lexDiagNameXShouldBeY:
+      wanted*: string
+      got*: string
+    else:
+      discard
+
+
 when defined(nimsuggest):
   const weakTokens = {tkComma, tkSemiColon, tkColon,
                       tkParRi, tkParDotRi, tkBracketRi, tkBracketDotRi,
@@ -106,12 +166,8 @@ const
   tokKeywordLow* = succ(tkSymbol)
   tokKeywordHigh* = pred(tkIntLit)
 
-type
-  NumericalBase* = enum
-    base10,                   ## base10 is listed as the first element,
-                              ## so that it is the correct default value
-    base2, base8, base16
 
+type
   Token* = object             ## a Nim token
     tokType*: TokType         ## the type of the token
     indent*: int              ## the indentation; != -1 if the token has been
@@ -272,17 +328,129 @@ template eatChar(L: var Lexer, t: var Token) =
   t.literal.add(L.buf[L.bufpos])
   inc(L.bufpos)
 
-template localReport*(L: Lexer, report: ReportTypes): untyped =
-  L.config.handleReport(wrap(report, instLoc(), getLineInfo(L)), instLoc())
+# xxx: importing `reports`, the whole need to bridge via `handleDiagReport`
+#      it's all terrible. this needs to be further broken up so the lexer just
+#      emits diagnostics and is configured as to how it should handle them as
+#      they arise wrt to aborting, etc
+from compiler/ast/report_enums import ReportKind, ReportCategory
+from compiler/ast/reports import Report, LexerReport, toReportLineInfo
+from compiler/front/msgs import handleReport
+import std/options as std_options
 
-template localReportTok*(L: Lexer, report: ReportTypes, tok: Token): untyped =
-  L.config.handleReport(wrap(
-    report, instLoc(), newLineInfo(L.fileIdx, tok.line, tok.col)), instLoc())
+proc handleDiagReport*(
+    conf: ConfigRef,
+    diag: LexerDiag,
+    reportFrom: InstantiationInfo,
+    eh: TErrorHandling = doNothing
+  ) {.inline.} =
+  # REFACTOR: this is a temporary bridge into existing reporting
 
-template localReportPos*(L: Lexer, report: ReportTypes, pos: int): untyped =
-  L.config.handleReport(wrap(
-    report, instLoc(), newLineInfo(
-      L.fileIdx, L.lineNumber, pos - L.lineStart)), instLoc())
+  let kind =
+    case diag.kind
+    of lexDiagInternalError: rintIce
+    of lexDiagMalformedUnderscores: rlexMalformedUnderscores
+    of lexDiagInvalidToken: rlexInvalidToken
+    of lexDiagNoTabs: rlexNoTabs
+    of lexDiagInvalidIntegerPrefix: rlexInvalidIntegerPrefix
+    of lexDiagInvalidIntegerSuffix: rlexInvalidIntegerSuffix
+    of lexDiagNumberNotInRange: rlexNumberNotInRange
+    of lexDiagExpectedHex: rlexExpectedHex
+    of lexDiagInvalidIntegerLiteral: rlexInvalidIntegerLiteral
+    of lexDiagInvalidCharLiteral: rlexInvalidCharLiteral
+    of lexDiagMissingClosingApostrophe: rlexMissingClosingApostrophe
+    of lexDiagInvalidUnicodeCodepoint: rlexInvalidUnicodeCodepoint
+    of lexDiagUnclosedTripleString: rlexUnclosedTripleString
+    of lexDiagUnclosedSingleString: rlexUnclosedSingleString
+    of lexDiagExpectedToken: rlexExpectedToken
+    of lexDiagUnclosedComment: rlexUnclosedComment
+    of lexDiagDeprecatedOctalPrefix: rlexDeprecatedOctalPrefix
+    of lexDiagLineTooLong: rlexLineTooLong
+    of lexDiagNameXShouldBeY: rlexLinterReport
+    else:
+      doAssert false, "unhandled lex diag kind: " & $diag.kind
+      repNone
+
+  var rep = Report(
+    category: repLexer,
+    lexReport: LexerReport(
+      location: std_options.some diag.location,
+      reportInst: diag.instLoc.toReportLineInfo,
+      msg: diag.msg,
+      kind: kind))
+  
+  if kind == rlexLinterReport:
+    rep.lexReport.wanted = diag.wanted
+    rep.lexReport.got = diag.got
+  
+  handleReport(conf, rep, reportFrom, eh)
+
+template handleDiag*(L: Lexer, diag: LexerDiag): untyped =
+  L.config.handleDiagReport(diag, instLoc())
+
+template handleDiag*(L: Lexer, diag: LexerDiagKind): untyped =
+  doAssert diag notin {lexDiagNameXShouldBeY}
+  let d = LexerDiag(location: L.getLineInfo, instLoc: instLoc(), kind: diag)
+  L.config.handleDiagReport(d, instLoc())
+
+template handleDiag*(L: Lexer, diag: LexerDiagKind, message: string): untyped =
+  doAssert diag notin {lexDiagNameXShouldBeY}
+  let d = LexerDiag(
+            msg: message, 
+            location: L.getLineInfo, 
+            instLoc: instLoc(), 
+            kind: diag)
+  L.config.handleDiagReport(d, instLoc())
+
+template handleDiagPos(L: Lexer, diag: LexerDiagKind, pos: int): untyped =
+  let d = LexerDiag(
+            msg: "",
+            location: newLineInfo(L.fileIdx, L.lineNumber, pos - L.lineStart),
+            instLoc: instLoc(),
+            kind: diag
+          )
+  L.config.handleDiagReport(d, instLoc())
+
+template diagLineTooLong(L: Lexer, pos: int): untyped =
+  let d = LexerDiag(
+            msg: "",
+            location: newLineInfo(L.fileIdx, L.lineNumber, pos - L.lineStart),
+            instLoc: instLoc(),
+            kind: lexDiagLineTooLong
+          )
+  L.config.handleDiagReport(d, instLoc())
+
+template diagLintName(L: Lexer, wantedName, gotName: string): untyped =
+  let d = LexerDiag(
+            location: L.getLineInfo, 
+            instLoc: instLoc(), 
+            kind: lexDiagNameXShouldBeY, 
+            wanted: wantedName,
+            got: gotName)
+
+  L.config.handleDiagReport(d, instLoc())
+
+template internalError(L: Lexer, message: string): untyped =
+  ## Causes an internal error
+  ## REFACTOR: this is a temporary bridge into existing reporting
+  let d = LexerDiag(
+            msg: message,
+            location: L.getLineInfo,
+            instLoc: instLoc(),
+            kind: lexDiagInternalError
+          )
+  L.config.handleDiagReport(d, instLoc(), doAbort)
+
+# template localReport*(L: Lexer, report: ReportTypes): untyped =
+#   L.config.handleReport(wrap(report, instLoc(), getLineInfo(L)), instLoc())
+
+# template localReportTok*(L: Lexer, report: ReportTypes, tok: Token): untyped =
+#   L.config.handleReport(wrap(
+#     report, instLoc(), newLineInfo(L.fileIdx, tok.line, tok.col)), instLoc())
+
+# template localReportPos*(L: Lexer, report: ReportTypes, pos: int): untyped =
+#   L.config.handleReport(wrap(
+#     report, instLoc(), newLineInfo(
+#       L.fileIdx, L.lineNumber, pos - L.lineStart)), instLoc())
 
 
 proc getNumber(L: var Lexer, result: var Token) =
@@ -298,7 +466,8 @@ proc getNumber(L: var Lexer, result: var Token) =
         break
       if L.buf[pos] == '_':
         if L.buf[pos+1] notin chars:
-          L.localReport(LexerReport(kind: rlexMalformedUnderscores))
+          L.handleDiag(lexDiagMalformedUnderscores)
+          # L.localReport(LexerReport(kind: rlexMalformedUnderscores))
           break
         tok.literal.add('_')
         inc(pos)
@@ -311,7 +480,7 @@ proc getNumber(L: var Lexer, result: var Token) =
       inc(pos)
     L.bufpos = pos
 
-  proc lexMessageLitNum(L: var Lexer, msg: string, startpos: int, msgKind: LexerReportKind) =
+  proc lexMessageLitNum(L: var Lexer, msg: string, startpos: int, msgKind: LexerDiagKind) =
     # Used to get slightly human friendlier err messages.
     const literalishChars = {'A'..'Z', 'a'..'z', '0'..'9', '_', '.', '\''}
     var msgPos = L.bufpos
@@ -330,7 +499,8 @@ proc getNumber(L: var Lexer, result: var Token) =
       inc(L.bufpos)
       matchChars(L, t, {'0'..'9'})
     L.bufpos = msgPos
-    L.localReport(LexerReport(kind: msgKind, msg: msg % t.literal))
+    L.handleDiag(msgKind, msg % t.literal)
+    # L.localReport(LexerReport(kind: msgKind, msg: msg % t.literal))
 
   var
     xi: BiggestInt
@@ -362,7 +532,7 @@ proc getNumber(L: var Lexer, result: var Token) =
     case L.buf[L.bufpos]
     of 'O':
       lexMessageLitNum(L, "$1 is an invalid int literal; For octal literals " &
-                          "use the '0o' prefix.", startpos, rlexInvalidIntegerPrefix)
+                          "use the '0o' prefix.", startpos, lexDiagInvalidIntegerPrefix)
     of 'x', 'X':
       eatChar(L, result, 'x')
       numDigits = matchUnderscoreChars(L, result, {'0'..'9', 'a'..'f', 'A'..'F'})
@@ -373,9 +543,10 @@ proc getNumber(L: var Lexer, result: var Token) =
       eatChar(L, result, 'b')
       numDigits = matchUnderscoreChars(L, result, {'0'..'1'})
     else:
-      L.config.internalError(getLineInfo(L), rintIce, "getNumber")
+      L.internalError("getNumber")
+      # L.config.internalError(getLineInfo(L), rintIce, "getNumber")
     if numDigits == 0:
-      lexMessageLitNum(L, "invalid number: '$1'", startpos, rlexInvalidIntegerLiteral)
+      lexMessageLitNum(L, "invalid number: '$1'", startpos, lexDiagInvalidIntegerLiteral)
   else:
     discard matchUnderscoreChars(L, result, {'0'..'9'})
     if (L.buf[L.bufpos] == '.') and (L.buf[L.bufpos + 1] in {'0'..'9'}):
@@ -428,14 +599,14 @@ proc getNumber(L: var Lexer, result: var Token) =
         result.literal.add suffix
         result.tokType = tkCustomLit
       else:
-        lexMessageLitNum(L, "invalid number suffix: '$1'", errPos, rlexInvalidIntegerSuffix)
+        lexMessageLitNum(L, "invalid number suffix: '$1'", errPos, lexDiagInvalidIntegerSuffix)
     else:
-      lexMessageLitNum(L, "invalid number suffix: '$1'", errPos, rlexInvalidIntegerSuffix)
+      lexMessageLitNum(L, "invalid number suffix: '$1'", errPos, lexDiagInvalidIntegerSuffix)
 
   # Is there still a literalish char awaiting? Then it's an error!
   if  L.buf[postPos] in literalishChars or
      (L.buf[postPos] == '.' and L.buf[postPos + 1] in {'0'..'9'}):
-    lexMessageLitNum(L, "invalid number: '$1'", startpos, rlexInvalidIntegerLiteral)
+    lexMessageLitNum(L, "invalid number: '$1'", startpos, lexDiagInvalidIntegerLiteral)
 
   if result.tokType != tkCustomLit:
     # Third stage, extract actual number
@@ -477,7 +648,8 @@ proc getNumber(L: var Lexer, result: var Token) =
             else:
               break
         else:
-          L.config.internalError(getLineInfo(L), rintIce, "getNumber")
+          L.internalError("getNumber")
+          # L.config.internalError(getLineInfo(L), rintIce, "getNumber")
 
         case result.tokType
         of tkIntLit, tkInt64Lit: setNumber result.iNumber, xi
@@ -496,7 +668,8 @@ proc getNumber(L: var Lexer, result: var Token) =
           setNumber result.fNumber, (cast[PFloat64](addr(xi)))[]
 
         else:
-          L.config.internalError(getLineInfo(L), rintIce, "getNumber")
+          L.internalError("getNumber")
+          # L.config.internalError(getLineInfo(L), rintIce, "getNumber")
 
         # Bounds checks. Non decimal literals are allowed to overflow the range of
         # the datatype as long as their pattern don't overflow _bitwise_, hence
@@ -514,7 +687,7 @@ proc getNumber(L: var Lexer, result: var Token) =
           if outOfRange:
             #echo "out of range num: ", result.iNumber, " vs ", xi
             lexMessageLitNum(
-              L, "number out of range: '$1'", startpos, rlexNumberNotInRange)
+              L, "number out of range: '$1'", startpos, lexDiagNumberNotInRange)
 
       else:
         case result.tokType
@@ -553,7 +726,7 @@ proc getNumber(L: var Lexer, result: var Token) =
           else: false
 
         if outOfRange:
-          lexMessageLitNum(L, "number out of range: '$1'", startpos, rlexNumberNotInRange)
+          lexMessageLitNum(L, "number out of range: '$1'", startpos, lexDiagNumberNotInRange)
 
       # Promote int literal to int64? Not always necessary, but more consistent
       if result.tokType == tkIntLit:
@@ -561,18 +734,21 @@ proc getNumber(L: var Lexer, result: var Token) =
           result.tokType = tkInt64Lit
 
     except ValueError:
-      lexMessageLitNum(L, "invalid number: '$1'", startpos, rlexInvalidIntegerLiteral)
+      lexMessageLitNum(L, "invalid number: '$1'", startpos, lexDiagInvalidIntegerLiteral)
     except OverflowDefect, RangeDefect:
-      lexMessageLitNum(L, "number out of range: '$1'", startpos, rlexNumberNotInRange)
+      lexMessageLitNum(L, "number out of range: '$1'", startpos, lexDiagNumberNotInRange)
   tokenEnd(result, postPos-1)
   L.bufpos = postPos
 
 proc handleHexChar(L: var Lexer, xi: var int; position: range[0..4]) =
   template invalid() =
-    L.localReport(LexerReport(
-      kind: rlexExpectedHex,
-      msg: "expected a hex digit, but found: " & L.buf[L.bufpos] &
-        "; maybe prepend with 0"))
+    L.handleDiag(lexDiagExpectedHex,
+                 "expected a hex digit, but found: " & L.buf[L.bufpos] &
+                 "; maybe prepend with 0")
+    # L.localReport(LexerReport(
+    #   kind: rlexExpectedHex,
+    #   msg: "expected a hex digit, but found: " & L.buf[L.bufpos] &
+    #     "; maybe prepend with 0"))
 
   case L.buf[L.bufpos]
   of '0'..'9':
@@ -644,9 +820,11 @@ proc getEscapedChar(L: var Lexer, tok: var Token) =
     inc(L.bufpos)
   of 'p', 'P':
     if tok.tokType == tkCharLit:
-      L.localReport(LexerReport(
-        kind: rlexInvalidCharLiteral,
-        msg: "\\p not allowed in character literal"))
+      L.handleDiag(lexDiagInvalidCharLiteral,
+                   "\\p not allowed in character literal")
+      # L.localReport(LexerReport(
+      #   kind: rlexInvalidCharLiteral,
+      #   msg: "\\p not allowed in character literal"))
 
     tok.literal.add(L.config.target.tnl)
     inc(L.bufpos)
@@ -688,9 +866,10 @@ proc getEscapedChar(L: var Lexer, tok: var Token) =
     tok.literal.add(chr(xi))
   of 'u', 'U':
     if tok.tokType == tkCharLit:
-      L.localReport(LexerReport(
-        kind: rlexInvalidCharLiteral,
-        msg: "\\u not allowed in character literal"))
+      L.handleDiag(lexDiagInvalidCharLiteral, "\\u not allowed in character literal")
+      # L.localReport(LexerReport(
+      #   kind: rlexInvalidCharLiteral,
+      #   msg: "\\u not allowed in character literal"))
     inc(L.bufpos)
     var xi = 0
     if L.buf[L.bufpos] == '{':
@@ -699,15 +878,17 @@ proc getEscapedChar(L: var Lexer, tok: var Token) =
       while L.buf[L.bufpos] != '}':
         handleHexChar(L, xi, 0)
       if start == L.bufpos:
-        L.localReport(LexerReport(
-          kind: rlexInvalidUnicodeCodepoint,
-          msg: "Unicode codepoint cannot be empty"))
+        L.handleDiag(lexDiagInvalidUnicodeCodepoint, "Unicode codepoint cannot be empty")
+        # L.localReport(LexerReport(
+        #   kind: rlexInvalidUnicodeCodepoint,
+        #   msg: "Unicode codepoint cannot be empty"))
       inc(L.bufpos)
       if xi > 0x10FFFF:
         let hex = ($L.buf)[start..L.bufpos-2]
-        L.localReport(LexerReport(
-          kind: rlexInvalidUnicodeCodepoint,
-          msg: "Unicode codepoint must be lower than 0x10FFFF, but was: " & hex))
+        L.handleDiag(lexDiagInvalidUnicodeCodepoint, "Unicode codepoint must be lower than 0x10FFFF, but was: " & hex)
+        # L.localReport(LexerReport(
+        #   kind: rlexInvalidUnicodeCodepoint,
+        #   msg: "Unicode codepoint must be lower than 0x10FFFF, but was: " & hex))
     else:
       handleHexChar(L, xi, 1)
       handleHexChar(L, xi, 2)
@@ -716,21 +897,25 @@ proc getEscapedChar(L: var Lexer, tok: var Token) =
     addUnicodeCodePoint(tok.literal, xi)
   of '0'..'9':
     if matchTwoChars(L, '0', {'0'..'9'}):
-      L.localReport(LexerReport(kind: rlexDeprecatedOctalPrefix))
+      L.handleDiag(lexDiagDeprecatedOctalPrefix)
+      # L.localReport(LexerReport(kind: rlexDeprecatedOctalPrefix))
     var xi = 0
     handleDecChars(L, xi)
     if (xi <= 255):
       tok.literal.add(chr(xi))
     else:
-      L.localReport(LexerReport(kind: rlexInvalidCharLiteral))
+      L.handleDiag(lexDiagInvalidCharLiteral)
+      # L.localReport(LexerReport(kind: rlexInvalidCharLiteral))
   else:
-    L.localReport(LexerReport(kind: rlexInvalidCharLiteral))
+      L.handleDiag(lexDiagInvalidCharLiteral)
+    # L.localReport(LexerReport(kind: rlexInvalidCharLiteral))
 
 proc handleCRLF(L: var Lexer, pos: int): int =
   template registerLine =
     if L.getColNumber(pos) > MaxLineLength:
-      L.localReportPos(
-        LexerReport(kind: rlexLineTooLong), pos)
+      L.diagLineTooLong(pos)
+      # L.localReportPos(
+      #   LexerReport(kind: rlexLineTooLong), pos)
 
   case L.buf[pos]
   of CR:
@@ -779,8 +964,9 @@ proc getString(L: var Lexer, tok: var Token, mode: StringMode) =
         tokenEndIgnore(tok, pos)
         var line2 = L.lineNumber
         L.lineNumber = line
-        L.localReportPos(LexerReport(
-          kind: rlexUnclosedTripleString), L.lineStart)
+        L.handleDiagPos(lexDiagUnclosedTripleString, L.lineStart)
+        # L.localReportPos(LexerReport(
+        #   kind: rlexUnclosedTripleString), L.lineStart)
         L.lineNumber = line2
         L.bufpos = pos
         break
@@ -803,7 +989,8 @@ proc getString(L: var Lexer, tok: var Token, mode: StringMode) =
           break
       elif c in {CR, LF, nimlexbase.EndOfFile}:
         tokenEndIgnore(tok, pos)
-        L.localReport LexerReport(kind: rlexUnclosedSingleString)
+        L.handleDiag(lexDiagUnclosedSingleString)
+        # L.localReport LexerReport(kind: rlexUnclosedSingleString)
         break
       elif (c == '\\') and mode == normal:
         L.bufpos = pos
@@ -821,7 +1008,8 @@ proc getCharacter(L: var Lexer; tok: var Token) =
   var c = L.buf[L.bufpos]
   case c
   of '\0'..pred(' '), '\'':
-    L.localReport LexerReport(kind: rlexInvalidCharLiteral)
+    L.handleDiag(lexDiagInvalidCharLiteral)
+    # L.localReport LexerReport(kind: rlexInvalidCharLiteral)
     tok.literal = $c
   of '\\': getEscapedChar(L, tok)
   else:
@@ -835,7 +1023,8 @@ proc getCharacter(L: var Lexer; tok: var Token) =
       tok.literal = "'"
       L.bufpos = startPos+1
     else:
-      L.localReport LexerReport(kind: rlexMissingClosingApostrophe)
+      L.handleDiag(lexDiagMissingClosingApostrophe)
+      # L.localReport LexerReport(kind: rlexMissingClosingApostrophe)
     tokenEndIgnore(tok, L.bufpos)
 
 const
@@ -899,7 +1088,8 @@ proc getSymbol(L: var Lexer, tok: var Token) =
       suspicious = true
     of '_':
       if L.buf[pos+1] notin SymChars:
-        L.localReport LexerReport(kind: rlexMalformedTrailingUnderscre)
+        L.handleDiag(lexDiagMalformedTrailingUnderscre)
+        # L.localReport LexerReport(kind: rlexMalformedTrailingUnderscre)
         break
       inc(pos)
       suspicious = true
@@ -921,10 +1111,11 @@ proc getSymbol(L: var Lexer, tok: var Token) =
   else:
     tok.tokType = TokType(tok.ident.id + ord(tkSymbol))
     if suspicious and {optStyleHint, optStyleError} * L.config.globalOptions != {}:
-      L.localReport LexerReport(
-        kind: rlexLinterReport,
-        wanted: tok.ident.s.normalize,
-        got: tok.ident.s)
+      L.diagLintName(tok.ident.s.normalize, tok.ident.s)
+      # L.localReport LexerReport(
+      #   kind: rlexLinterReport,
+      #   wanted: tok.ident.s.normalize,
+      #   got: tok.ident.s)
   L.bufpos = pos
 
 
@@ -1079,9 +1270,9 @@ proc skipMultiLineComment(L: var Lexer; tok: var Token; start: int;
           dec c
     of nimlexbase.EndOfFile:
       tokenEndIgnore(tok, pos)
-      L.localReportPos(
-        LexerReport(kind: rlexUnclosedComment), pos)
-
+      L.handleDiagPos(lexDiagUnclosedComment, pos)
+      # L.localReportPos(
+      #   LexerReport(kind: rlexUnclosedComment), pos)
       break
     else:
       if isDoc: tok.literal.add L.buf[pos]
@@ -1153,8 +1344,9 @@ proc skip(L: var Lexer, tok: var Token) =
       inc(tok.strongSpaceA)
     of '\t':
       if not L.allowTabs:
-        L.localReportPos(
-          LexerReport(kind: rlexNoTabs), pos)
+        L.handleDiagPos(lexDiagNoTabs, pos)
+        # L.localReportPos(
+        #   LexerReport(kind: rlexNoTabs), pos)
 
       inc(pos)
     of CR, LF:
@@ -1311,9 +1503,12 @@ proc rawGetTok*(L: var Lexer, tok: var Token) =
       else:
         tok.literal = $c
         tok.tokType = tkInvalid
-        L.localReport LexerReport(
-          kind: rlexInvalidToken,
-          msg: "invalid token: " & c & " (\\" & $(ord(c)) & ')')
+        L.handleDiag(
+          lexDiagInvalidToken,
+          "invalid token: " & c & " (\\" & $(ord(c)) & ')')
+        # L.localReport LexerReport(
+        #   kind: rlexInvalidToken,
+        #   msg: "invalid token: " & c & " (\\" & $(ord(c)) & ')')
     of '\"':
       # check for generalized raw string literal:
       let mode = if L.bufpos > 0 and L.buf[L.bufpos-1] in SymChars: generalized else: normal
@@ -1334,9 +1529,12 @@ proc rawGetTok*(L: var Lexer, tok: var Token) =
             unicodeOprLen(L.buf, L.bufpos)[0] != 0:
           discard
         else:
-          L.localReport LexerReport(
-            kind: rlexInvalidToken,
-            msg: "invalid token: no whitespace between number and identifier")
+          L.handleDiag(
+            lexDiagInvalidToken,
+            "invalid token: no whitespace between number and identifier")
+          # L.localReport LexerReport(
+          #   kind: rlexInvalidToken,
+          #   msg: "invalid token: no whitespace between number and identifier")
     of '-':
       if L.buf[L.bufpos+1] in {'0'..'9'} and
           (L.bufpos-1 == 0 or L.buf[L.bufpos-1] in UnaryMinusWhitelist):
@@ -1351,9 +1549,12 @@ proc rawGetTok*(L: var Lexer, tok: var Token) =
               unicodeOprLen(L.buf, L.bufpos)[0] != 0:
             discard
           else:
-            L.localReport LexerReport(
-              kind: rlexInvalidToken,
-              msg: "invalid token: no whitespace between number and identifier")
+            L.handleDiag(
+              lexDiagInvalidToken,
+              "invalid token: no whitespace between number and identifier")
+            # L.localReport LexerReport(
+            #   kind: rlexInvalidToken,
+            #   msg: "invalid token: no whitespace between number and identifier")
       else:
         getOperator(L, tok)
     else:
@@ -1365,9 +1566,12 @@ proc rawGetTok*(L: var Lexer, tok: var Token) =
       else:
         tok.literal = $c
         tok.tokType = tkInvalid
-        L.localReport LexerReport(
-          kind: rlexInvalidToken,
-          msg: "invalid token: " & c & " (\\" & $(ord(c)) & ')')
+        L.handleDiag(
+          lexDiagInvalidToken,
+          "invalid token: " & c & " (\\" & $(ord(c)) & ')')
+        # L.localReport LexerReport(
+        #   kind: rlexInvalidToken,
+        #   msg: "invalid token: " & c & " (\\" & $(ord(c)) & ')')
         inc(L.bufpos)
   atTokenEnd()
 

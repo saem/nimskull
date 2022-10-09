@@ -33,6 +33,62 @@ import
     pathutils,
   ]
 
+type
+  # TODO:
+  # - finish mapping the diags enum below
+  # - finish convering this file
+  # - then figure out how to make the handler pluggable
+  ConfLexerDiagKind* = enum
+    # internal errors begin
+    confLexDiagInternalError ## lexer programming error
+    # internal errors end
+    
+    # users errors begin
+
+    # spacing
+    confLexDiagMalformedUnderscores
+    confLexDiagMalformedTrailingUnderscre
+    confLexDiagInvalidToken
+    confLexDiagNoTabs
+
+    # numbers
+    confLexDiagInvalidIntegerPrefix
+    confLexDiagInvalidIntegerSuffix
+    confLexDiagNumberNotInRange
+    confLexDiagExpectedHex
+    confLexDiagInvalidIntegerLiteral
+
+    # char
+    confLexDiagInvalidCharLiteral
+    confLexDiagMissingClosingApostrophe
+    confLexDiagInvalidUnicodeCodepoint
+
+    # string
+    confLexDiagUnclosedTripleString
+    confLexDiagUnclosedSingleString
+
+    # expectation mismatch
+    confLexDiagExpectedToken
+
+    # comments
+    confLexDiagUnclosedComment
+
+    # user errors end
+
+    # warnings begin
+    confLexDiagDeprecatedOctalPrefix = "OctalEscape"
+    # warnings end
+
+    # linting hints begin
+    confLexDiagLineTooLong = "LineTooLong"
+    confLexDiagNameXShouldBeY = "Name"
+    # linting hints end
+
+    confLexDiagCfgInvalidDirective
+
+  ConfLexerDiag* = object
+    kind*
+
 # ---------------- configuration file parser -----------------------------
 # we use Nim's lexer here to save space and work
 
@@ -49,7 +105,8 @@ proc parseAtom(L: var Lexer, tok: var Token; config: ConfigRef): bool =
     if tok.tokType == tkParRi:
       ppGetTok(L, tok)
     else:
-      localReport(L, LexerReport(kind: rlexExpectedToken, msg: ")"))
+      handleDiag(L, lexDiagExpectedToken, ")")
+      # localReport(L, LexerReport(kind: rlexExpectedToken, msg: ")"))
 
   elif tok.tokType == tkNot:
     ppGetTok(L, tok)
@@ -77,15 +134,16 @@ proc evalppIf(L: var Lexer, tok: var Token; config: ConfigRef): bool =
   result = parseExpr(L, tok, config)
   if tok.tokType == tkColon:
     ppGetTok(L, tok)
-
   else:
-    localReport(L, LexerReport(kind: rlexExpectedToken, msg: ":"))
+    handleDiag(L, lexDiagExpectedToken, ":")
+    # localReport(L, LexerReport(kind: rlexExpectedToken, msg: ":"))
 
 #var condStack: seq[bool] = @[]
 
 proc doEnd(L: var Lexer, tok: var Token; condStack: var seq[bool]) =
   if high(condStack) < 0:
-    localReport(L, LexerReport(kind: rlexExpectedToken, msg: "@if"))
+    handleDiag(L, lexDiagExpectedToken, "@if")
+    # localReport(L, LexerReport(kind: rlexExpectedToken, msg: "@if"))
 
   ppGetTok(L, tok)            # skip 'end'
   setLen(condStack, high(condStack))
@@ -98,7 +156,8 @@ proc jumpToDirective(L: var Lexer, tok: var Token, dest: TJumpDest; config: Conf
                      condStack: var seq[bool])
 proc doElse(L: var Lexer, tok: var Token; config: ConfigRef; condStack: var seq[bool]) =
   if high(condStack) < 0:
-    localReport(L, LexerReport(kind: rlexExpectedToken, msg: "@if"))
+    handleDiag(L, lexDiagExpectedToken, "@if")
+    # localReport(L, LexerReport(kind: rlexExpectedToken, msg: "@if"))
 
   ppGetTok(L, tok)
   if tok.tokType == tkColon:
@@ -109,7 +168,8 @@ proc doElse(L: var Lexer, tok: var Token; config: ConfigRef; condStack: var seq[
 
 proc doElif(L: var Lexer, tok: var Token; config: ConfigRef; condStack: var seq[bool]) =
   if high(condStack) < 0:
-    localReport(L, LexerReport(kind: rlexExpectedToken, msg: "@if"))
+    handleDiag(L, lexDiagExpectedToken, "@if")
+    # localReport(L, LexerReport(kind: rlexExpectedToken, msg: "@if"))
 
   var res = evalppIf(L, tok, config)
   if condStack[high(condStack)] or not res:
@@ -144,7 +204,8 @@ proc jumpToDirective(L: var Lexer, tok: var Token, dest: TJumpDest; config: Conf
         discard
       ppGetTok(L, tok)
     elif tok.tokType == tkEof:
-      localReport(L, LexerReport(kind: rlexExpectedToken, msg: "@end"))
+      handleDiag(L, lexDiagExpectedToken, "@end")
+      # localReport(L, LexerReport(kind: rlexExpectedToken, msg: "@end"))
     else:
       ppGetTok(L, tok)
 
@@ -161,6 +222,7 @@ proc parseDirective(L: var Lexer, tok: var Token; config: ConfigRef; condStack: 
   of wEnd: doEnd(L, tok, condStack)
   of wWrite:
     ppGetTok(L, tok)
+    # TODO: replace this
     L.localReport(InternalReport(
       kind: rintNimconfWrite,
       msg: strtabs.`%`($tok, config.configVars, {useEnvironment, useKey})))
@@ -191,11 +253,13 @@ proc parseDirective(L: var Lexer, tok: var Token; config: ConfigRef; condStack: 
 
     of "trace":
       ppGetTok(L, tok)
+      # TODO: replace this
       localReport(L, DebugReport(kind: rdbgCfgTrace, str: $tok))
       ppGetTok(L, tok)
 
     else:
-      localReport(L, LexerReport(kind: rlexCfgInvalidDirective, msg: $tok))
+      handleDiag(L, confLexDiagCfgInvalidDirective, $tok)
+      # localReport(L, LexerReport(kind: rlexCfgInvalidDirective, msg: $tok))
 
 proc confTok(L: var Lexer, tok: var Token; config: ConfigRef; condStack: var seq[bool]) =
   ppGetTok(L, tok)
