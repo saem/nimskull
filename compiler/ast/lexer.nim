@@ -126,9 +126,6 @@ type
     lexDiagUnclosedTripleString
     lexDiagUnclosedSingleString
 
-    # expectation mismatch
-    lexDiagExpectedToken
-
     # comments
     lexDiagUnclosedComment
 
@@ -361,7 +358,6 @@ proc handleDiagReport*(
     of lexDiagInvalidUnicodeCodepoint: rlexInvalidUnicodeCodepoint
     of lexDiagUnclosedTripleString: rlexUnclosedTripleString
     of lexDiagUnclosedSingleString: rlexUnclosedSingleString
-    of lexDiagExpectedToken: rlexExpectedToken
     of lexDiagUnclosedComment: rlexUnclosedComment
     of lexDiagDeprecatedOctalPrefix: rlexDeprecatedOctalPrefix
     of lexDiagLineTooLong: rlexLineTooLong

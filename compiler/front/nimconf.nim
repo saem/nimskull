@@ -35,12 +35,14 @@ import
 
 type
   # TODO:
-  # - finish mapping the diags enum below
-  # - finish convering this file
+  # - HERE: finish mapping the diags enum below
+  # - finish converting this file
   # - then figure out how to make the handler pluggable
-  ConfLexerDiagKind* = enum
+  ConfigDiagKind* = enum
+    ## errors related to parsing and compiler config file handling
+
     # internal errors begin
-    confLexDiagInternalError ## lexer programming error
+    confLexDiagInternalError ## lexer encountered an error
     # internal errors end
     
     # users errors begin
@@ -69,6 +71,7 @@ type
 
     # expectation mismatch
     confLexDiagExpectedToken
+    confParseDiagExpectedClosingPar
 
     # comments
     confLexDiagUnclosedComment
@@ -105,7 +108,7 @@ proc parseAtom(L: var Lexer, tok: var Token; config: ConfigRef): bool =
     if tok.tokType == tkParRi:
       ppGetTok(L, tok)
     else:
-      handleDiag(L, lexDiagExpectedToken, ")")
+      handleDiag(L, confParseDiagExpectedClosingPar)
       # localReport(L, LexerReport(kind: rlexExpectedToken, msg: ")"))
 
   elif tok.tokType == tkNot:
@@ -268,7 +271,8 @@ proc confTok(L: var Lexer, tok: var Token; config: ConfigRef; condStack: var seq
 
 proc checkSymbol(L: Lexer, tok: Token) =
   if tok.tokType notin {tkSymbol..tkInt64Lit, tkStrLit..tkTripleStrLit}:
-    localReport(L, ParserReport(kind: rparIdentExpected, msg: $tok))
+    handleDiag(L, confDiagExpectedClosingPar)
+    # localReport(L, ParserReport(kind: rparIdentExpected, msg: $tok))
 
 proc parseAssignment(L: var Lexer, tok: var Token;
                      config: ConfigRef; condStack: var seq[bool]) =
@@ -371,8 +375,6 @@ proc loadConfigs*(
     cfg: RelativeFile; cache: IdentCache;
     conf: ConfigRef; idgen: IdGenerator
   ) =
-
-
   setDefaultLibpath(conf)
   proc readConfigFile(path: AbsoluteFile) =
     let configPath = path
