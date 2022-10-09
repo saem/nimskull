@@ -362,9 +362,9 @@ proc handleDiagReport*(
     of lexDiagDeprecatedOctalPrefix: rlexDeprecatedOctalPrefix
     of lexDiagLineTooLong: rlexLineTooLong
     of lexDiagNameXShouldBeY: rlexLinterReport
-    else:
-      doAssert false, "unhandled lex diag kind: " & $diag.kind
-      repNone
+    # else:
+    #   doAssert false, "unhandled lex diag kind: " & $diag.kind
+    #   repNone
 
   var rep = Report(
     category: repLexer,

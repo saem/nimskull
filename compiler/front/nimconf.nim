@@ -35,65 +35,79 @@ import
 
 type
   # TODO:
-  # - HERE: finish mapping the diags enum below
-  # - finish converting this file
+  # - DONE: finish mapping the diags enum below
+  # - HERE: finish converting this file
   # - then figure out how to make the handler pluggable
-  ConfigDiagKind* = enum
-    ## errors related to parsing and compiler config file handling
+  ConfigEventKind* = enum
+    ## events/errors arising from parsing and processing a compiler config file
 
     # internal errors begin
-    confLexDiagInternalError ## lexer encountered an error
+    cekInternalError ## encountered an error
     # internal errors end
-    
+
     # users errors begin
+    
+    # expected token
+    cekParseExpectedX        ## expected some token
+    cekParseExpectedCloseX   ## expected closing ')', ']', etc
+    cekParseExpectedIdent    ## expected an identifier
 
-    # spacing
-    confLexDiagMalformedUnderscores
-    confLexDiagMalformedTrailingUnderscre
-    confLexDiagInvalidToken
-    confLexDiagNoTabs
-
-    # numbers
-    confLexDiagInvalidIntegerPrefix
-    confLexDiagInvalidIntegerSuffix
-    confLexDiagNumberNotInRange
-    confLexDiagExpectedHex
-    confLexDiagInvalidIntegerLiteral
-
-    # char
-    confLexDiagInvalidCharLiteral
-    confLexDiagMissingClosingApostrophe
-    confLexDiagInvalidUnicodeCodepoint
-
-    # string
-    confLexDiagUnclosedTripleString
-    confLexDiagUnclosedSingleString
-
-    # expectation mismatch
-    confLexDiagExpectedToken
-    confParseDiagExpectedClosingPar
-
-    # comments
-    confLexDiagUnclosedComment
+    # invalid input
+    cekInvalidDirective
 
     # user errors end
 
+    cekWriteConfig           ## write out the config
+
+    cekDebugTrace            ## config debug trace
+    cekDebugReadStart        ## start config file read
+    cekDebugReadStop         ## stop config file read
+
     # warnings begin
-    confLexDiagDeprecatedOctalPrefix = "OctalEscape"
     # warnings end
 
-    # linting hints begin
-    confLexDiagLineTooLong = "LineTooLong"
-    confLexDiagNameXShouldBeY = "Name"
-    # linting hints end
+    # hints begin
+    cekHintConfStart
+    # hints end
 
-    confLexDiagCfgInvalidDirective
-
-  ConfLexerDiag* = object
-    kind*
+  ConfigFileEvent* = object
+    kind*: ConfigEventKind
 
 # ---------------- configuration file parser -----------------------------
 # we use Nim's lexer here to save space and work
+
+template handleError(L: Lexer, ev: ConfigFileEvent): untyped =
+  # TODO implement me
+  discard
+
+template handleError(L: Lexer, ev: ConfigFileEvent, msg: string): untyped =
+  # TODO implement me
+  discard
+
+template handleExpectedX(L: Lexer, missing: string): untyped =
+  # TODO implement me
+  let kind = cekParseExpectedX
+  discard
+
+template handleWriteConf(L: Lexer, msg: string): untyped =
+  # TODO implement me
+  discard
+
+template handleTrace(L: Lexer, trace: string): untyped =
+  # TODO implement me
+  discard
+
+template handleReadStart(L: Lexer, filename: string): untyped =
+  # TODO implement me
+  discard
+
+template handleReadStop(L: Lexer, filename: string): untyped =
+  # TODO implement me
+  discard
+
+template handleHintConfStart(L: Lexer, filename: string): untyped =
+  # TODO implement me
+  discard
 
 proc ppGetTok(L: var Lexer, tok: var Token) =
   # simple filter
@@ -108,7 +122,7 @@ proc parseAtom(L: var Lexer, tok: var Token; config: ConfigRef): bool =
     if tok.tokType == tkParRi:
       ppGetTok(L, tok)
     else:
-      handleDiag(L, confParseDiagExpectedClosingPar)
+      handleError(L, cekParseExpectedCloseX, ")")
       # localReport(L, LexerReport(kind: rlexExpectedToken, msg: ")"))
 
   elif tok.tokType == tkNot:
@@ -138,14 +152,14 @@ proc evalppIf(L: var Lexer, tok: var Token; config: ConfigRef): bool =
   if tok.tokType == tkColon:
     ppGetTok(L, tok)
   else:
-    handleDiag(L, lexDiagExpectedToken, ":")
+    handleExpectedX(L, ":")
     # localReport(L, LexerReport(kind: rlexExpectedToken, msg: ":"))
 
 #var condStack: seq[bool] = @[]
 
 proc doEnd(L: var Lexer, tok: var Token; condStack: var seq[bool]) =
   if high(condStack) < 0:
-    handleDiag(L, lexDiagExpectedToken, "@if")
+    handleExpectedX(L, "@if")
     # localReport(L, LexerReport(kind: rlexExpectedToken, msg: "@if"))
 
   ppGetTok(L, tok)            # skip 'end'
@@ -159,7 +173,7 @@ proc jumpToDirective(L: var Lexer, tok: var Token, dest: TJumpDest; config: Conf
                      condStack: var seq[bool])
 proc doElse(L: var Lexer, tok: var Token; config: ConfigRef; condStack: var seq[bool]) =
   if high(condStack) < 0:
-    handleDiag(L, lexDiagExpectedToken, "@if")
+    handleExpectedX(L, "@if")
     # localReport(L, LexerReport(kind: rlexExpectedToken, msg: "@if"))
 
   ppGetTok(L, tok)
@@ -171,7 +185,7 @@ proc doElse(L: var Lexer, tok: var Token; config: ConfigRef; condStack: var seq[
 
 proc doElif(L: var Lexer, tok: var Token; config: ConfigRef; condStack: var seq[bool]) =
   if high(condStack) < 0:
-    handleDiag(L, lexDiagExpectedToken, "@if")
+    handleExpectedX(L, "@if")
     # localReport(L, LexerReport(kind: rlexExpectedToken, msg: "@if"))
 
   var res = evalppIf(L, tok, config)
@@ -207,7 +221,7 @@ proc jumpToDirective(L: var Lexer, tok: var Token, dest: TJumpDest; config: Conf
         discard
       ppGetTok(L, tok)
     elif tok.tokType == tkEof:
-      handleDiag(L, lexDiagExpectedToken, "@end")
+      handleExpectedX(L, "@end")
       # localReport(L, LexerReport(kind: rlexExpectedToken, msg: "@end"))
     else:
       ppGetTok(L, tok)
@@ -226,9 +240,11 @@ proc parseDirective(L: var Lexer, tok: var Token; config: ConfigRef; condStack: 
   of wWrite:
     ppGetTok(L, tok)
     # TODO: replace this
-    L.localReport(InternalReport(
-      kind: rintNimconfWrite,
-      msg: strtabs.`%`($tok, config.configVars, {useEnvironment, useKey})))
+    L.handleWriteConf:
+      strtabs.`%`($tok, config.configVars, {useEnvironment, useKey})
+    # L.localReport(InternalReport(
+    #   kind: rintNimconfWrite,
+    #   msg: strtabs.`%`($tok, config.configVars, {useEnvironment, useKey})))
 
     ppGetTok(L, tok)
   else:
@@ -256,12 +272,12 @@ proc parseDirective(L: var Lexer, tok: var Token; config: ConfigRef; condStack: 
 
     of "trace":
       ppGetTok(L, tok)
-      # TODO: replace this
-      localReport(L, DebugReport(kind: rdbgCfgTrace, str: $tok))
+      L.handleTrace($tok)
+      # localReport(L, DebugReport(kind: rdbgCfgTrace, str: $tok))
       ppGetTok(L, tok)
 
     else:
-      handleDiag(L, confLexDiagCfgInvalidDirective, $tok)
+      handleError(L, cekInvalidDirective, $tok)
       # localReport(L, LexerReport(kind: rlexCfgInvalidDirective, msg: $tok))
 
 proc confTok(L: var Lexer, tok: var Token; config: ConfigRef; condStack: var seq[bool]) =
@@ -271,7 +287,7 @@ proc confTok(L: var Lexer, tok: var Token; config: ConfigRef; condStack: var seq
 
 proc checkSymbol(L: Lexer, tok: Token) =
   if tok.tokType notin {tkSymbol..tkInt64Lit, tkStrLit..tkTripleStrLit}:
-    handleDiag(L, confDiagExpectedClosingPar)
+    handleError(L, cekIdentExpected, $tok)
     # localReport(L, ParserReport(kind: rparIdentExpected, msg: $tok))
 
 proc parseAssignment(L: var Lexer, tok: var Token;
@@ -297,11 +313,12 @@ proc parseAssignment(L: var Lexer, tok: var Token;
     val.add('[')
     val.add($tok)
     confTok(L, tok, config, condStack)
+
     if tok.tokType == tkBracketRi:
       confTok(L, tok, config, condStack)
-
     else:
-      localReport(L, LexerReport(kind: rlexExpectedToken, msg: "]"))
+      handleError(L, cekParseExpectedCloseX, "]")
+      # localReport(L, LexerReport(kind: rlexExpectedToken, msg: "]"))
 
     val.add(']')
   let percent = tok.ident != nil and tok.ident.s == "%="
@@ -337,10 +354,11 @@ proc readConfigFile*(filename: AbsoluteFile; cache: IdentCache;
 
   stream = llStreamOpen(filename, fmRead)
   if stream != nil:
-    config.localReport DebugReport(
-      kind: rdbgStartingConfRead,
-      filename: filename.string
-    )
+    config.handleReadStart(filename.string)
+    # config.localReport DebugReport(
+    #   kind: rdbgStartingConfRead,
+    #   filename: filename.string
+    # )
 
     initToken(tok)
     openLexer(L, filename, stream, cache, config)
@@ -349,13 +367,15 @@ proc readConfigFile*(filename: AbsoluteFile; cache: IdentCache;
     confTok(L, tok, config, condStack)           # read in the first token
     while tok.tokType != tkEof: parseAssignment(L, tok, config, condStack)
     if condStack.len > 0:
-      localReport(L, LexerReport(kind: rlexExpectedToken, msg: "@end"))
+      handleError(L, cekParseExpectedX, "@end")
+      # localReport(L, LexerReport(kind: rlexExpectedToken, msg: "@end"))
     closeLexer(L)
 
-    config.localReport DebugReport(
-      kind: rdbgFinishedConfRead,
-      filename: filename.string
-    )
+    config.handleReadStop(filename.string)
+    # config.localReport DebugReport(
+    #   kind: rdbgFinishedConfRead,
+    #   filename: filename.string
+    # )
 
     return true
 
@@ -443,7 +463,8 @@ proc loadConfigs*(
   template showHintConf =
     for filename in conf.configFiles:
       # delayed to here so that `hintConf` is honored
-      localReport(conf, ExternalReport(kind: rextConf, msg: filename.string))
+      conf.handleHintConfStart(filename.string)
+      # localReport(conf, ExternalReport(kind: rextConf, msg: filename.string))
   if conf.cmd == cmdNimscript:
     showHintConf()
     conf.configFiles.setLen 0
