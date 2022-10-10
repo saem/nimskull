@@ -17,16 +17,15 @@ import
   ],
   compiler/front/[
     commands,
-    msgs,
     options,
     scriptconfig
   ],
   compiler/ast/[
     lexer,
-    reports,
     idents,
     wordrecg,
     llstream,
+    lineinfos,
     ast
   ],
   compiler/utils/[
@@ -41,12 +40,7 @@ type
   ConfigEventKind* = enum
     ## events/errors arising from parsing and processing a compiler config file
 
-    # internal errors begin
-    cekInternalError ## encountered an error
-    # internal errors end
-
     # users errors begin
-    
     # expected token
     cekParseExpectedX        ## expected some token
     cekParseExpectedCloseX   ## expected closing ')', ']', etc
@@ -54,60 +48,161 @@ type
 
     # invalid input
     cekInvalidDirective
-
     # user errors end
 
+    # user output start
     cekWriteConfig           ## write out the config
+    # user output end
 
+    # debug start
     cekDebugTrace            ## config debug trace
     cekDebugReadStart        ## start config file read
     cekDebugReadStop         ## stop config file read
+    # debug end
 
-    # warnings begin
-    # warnings end
-
-    # hints begin
-    cekHintConfStart
-    # hints end
+    # progress begin
+    cekProgressConfStart
+    # progress end
 
   ConfigFileEvent* = object
-    kind*: ConfigEventKind
+    case kind*: ConfigEventKind:
+      of cekParseExpectedX, cekParseExpectedCloseX, cekParseExpectedIdent,
+         cekInvalidDirective, cekWriteConfig, cekDebugTrace:
+        location*: TLineInfo         ## diagnostic location
+      of cekDebugReadStart, cekDebugReadStop, cekProgressConfStart:
+        discard
+    instLoc*: InstantiationInfo ## instantiation in lexer's source
+    msg*: string
 
 # ---------------- configuration file parser -----------------------------
 # we use Nim's lexer here to save space and work
 
-template handleError(L: Lexer, ev: ConfigFileEvent): untyped =
-  # TODO implement me
-  discard
+# xxx: importing `reports`, the whole need to bridge via `handleDiagReport`
+#      it's all terrible. this needs to be further broken up so the lexer just
+#      emits diagnostics and is configured as to how it should handle them as
+#      they arise wrt to aborting, etc
+from compiler/ast/report_enums import ReportKind, ReportCategory
+from compiler/ast/reports import Report, DebugReport, ExternalReport,
+                                 InternalReport, LexerReport, ParserReport,
+                                 toReportLineInfo
+from compiler/front/msgs import handleReport
+import std/options as std_options
 
-template handleError(L: Lexer, ev: ConfigFileEvent, msg: string): untyped =
-  # TODO implement me
-  discard
+proc handleConfigEvent(
+    conf: ConfigRef, 
+    evt: ConfigFileEvent,
+    reportFrom: InstantiationInfo,
+    eh: TErrorHandling = doNothing
+  ) {.inline.} =
+  # REFACTOR: this is a temporary bridge into existing reporting
+
+  let kind =
+    case evt.kind
+    of cekParseExpectedX: rlexExpectedToken
+    of cekParseExpectedCloseX: rlexExpectedToken
+    # xxx: rlexExpectedToken is not a "lexer" error, but attempts at code reuse
+    #      perpetuated it -- fix after reporting is untangled.
+    of cekParseExpectedIdent: rparIdentExpected
+    of cekInvalidDirective: rlexCfgInvalidDirective
+    of cekWriteConfig: rintNimconfWrite
+    of cekDebugTrace: rdbgCfgTrace
+    of cekDebugReadStart: rdbgStartingConfRead
+    of cekDebugReadStop: rdbgFinishedConfRead
+    of cekProgressConfStart: rextConf
+
+  var rep =
+    case kind
+    of rlexExpectedToken, rlexCfgInvalidDirective:
+      Report(
+        category: repLexer,
+        lexReport: LexerReport(
+          location: std_options.some evt.location,
+          reportInst: evt.instLoc.toReportLineInfo,
+          msg: evt.msg,
+          kind: kind))
+    of rparIdentExpected:
+      Report(
+        category: repParser,
+        parserReport: ParserReport(
+          location: std_options.some evt.location,
+          reportInst: evt.instLoc.toReportLineInfo,
+          msg: evt.msg,
+          kind: kind))
+    of rintNimconfWrite:
+      Report(
+        category: repInternal,
+        internalReport: InternalReport(
+          location: std_options.some evt.location,
+          reportInst: evt.instLoc.toReportLineInfo,
+          msg: evt.msg,
+          kind: kind))
+    of rdbgCfgTrace:
+      Report(
+        category: repDebug,
+        debugReport: DebugReport(
+          location: std_options.some evt.location,
+          reportInst: evt.instLoc.toReportLineInfo,
+          kind: kind,
+          str: evt.msg))
+    of rdbgStartingConfRead, rdbgFinishedConfRead:
+      Report(
+        category: repDebug,
+        debugReport: DebugReport(
+          reportInst: evt.instLoc.toReportLineInfo,
+          kind: kind,
+          filename: evt.msg))
+    of rextConf:
+      Report(
+        category: repExternal,
+        externalReport: ExternalReport(
+          reportInst: evt.instLoc.toReportLineInfo,
+          kind: kind,
+          msg: evt.msg))
+    else:
+      doAssert false, "totally borked"
+      Report() # assert ensure we don't get here
+  
+  handleReport(conf, rep, reportFrom, eh)
+
+template handleError(L: Lexer, ev: ConfigEventKind, errMsg: string): untyped =
+  {.line.}:
+    let e = ConfigFileEvent(kind: ev,
+                            location: L.getLineInfo,
+                            instLoc: instLoc(),
+                            msg: errMsg)
+    L.config.handleConfigEvent(e, instLoc())
 
 template handleExpectedX(L: Lexer, missing: string): untyped =
-  # TODO implement me
-  let kind = cekParseExpectedX
-  discard
+  {.line.}:
+    let e = ConfigFileEvent(kind: cekParseExpectedX, 
+                            location: L.getLineInfo, 
+                            instLoc: instLoc(), 
+                            msg: missing)
+    L.config.handleConfigEvent(e, instLoc())
 
-template handleWriteConf(L: Lexer, msg: string): untyped =
-  # TODO implement me
-  discard
+template handleWriteConf(L: Lexer, cfg: string): untyped =
+  {.line.}:
+    let e = ConfigFileEvent(kind: cekWriteConfig,
+                            instLoc: instLoc(),
+                            msg: cfg)
+    L.config.handleConfigEvent(e, instLoc())
 
 template handleTrace(L: Lexer, trace: string): untyped =
-  # TODO implement me
-  discard
+  {.line.}:
+    let e = ConfigFileEvent(kind: cekDebugTrace,
+                            location: L.getLineInfo,
+                            instLoc: instLoc(),
+                            msg: trace)
+    L.config.handleConfigEvent(e, instLoc())
 
-template handleReadStart(L: Lexer, filename: string): untyped =
-  # TODO implement me
-  discard
-
-template handleReadStop(L: Lexer, filename: string): untyped =
-  # TODO implement me
-  discard
-
-template handleHintConfStart(L: Lexer, filename: string): untyped =
-  # TODO implement me
-  discard
+template handleRead(conf: ConfigRef,
+                    evt: range[cekDebugReadStart..cekProgressConfStart],
+                    filename: string): untyped =
+  {.line.}:
+    let e = ConfigFileEvent(kind: evt,
+                            instLoc: instLoc(),
+                            msg: filename)
+    conf.handleConfigEvent(e, instLoc())
 
 proc ppGetTok(L: var Lexer, tok: var Token) =
   # simple filter
@@ -287,7 +382,7 @@ proc confTok(L: var Lexer, tok: var Token; config: ConfigRef; condStack: var seq
 
 proc checkSymbol(L: Lexer, tok: Token) =
   if tok.tokType notin {tkSymbol..tkInt64Lit, tkStrLit..tkTripleStrLit}:
-    handleError(L, cekIdentExpected, $tok)
+    handleError(L, cekParseExpectedIdent, $tok)
     # localReport(L, ParserReport(kind: rparIdentExpected, msg: $tok))
 
 proc parseAssignment(L: var Lexer, tok: var Token;
@@ -354,7 +449,7 @@ proc readConfigFile*(filename: AbsoluteFile; cache: IdentCache;
 
   stream = llStreamOpen(filename, fmRead)
   if stream != nil:
-    config.handleReadStart(filename.string)
+    config.handleRead(cekDebugReadStart, filename.string)
     # config.localReport DebugReport(
     #   kind: rdbgStartingConfRead,
     #   filename: filename.string
@@ -371,7 +466,7 @@ proc readConfigFile*(filename: AbsoluteFile; cache: IdentCache;
       # localReport(L, LexerReport(kind: rlexExpectedToken, msg: "@end"))
     closeLexer(L)
 
-    config.handleReadStop(filename.string)
+    config.handleRead(cekDebugReadStop, filename.string)
     # config.localReport DebugReport(
     #   kind: rdbgFinishedConfRead,
     #   filename: filename.string
@@ -463,7 +558,7 @@ proc loadConfigs*(
   template showHintConf =
     for filename in conf.configFiles:
       # delayed to here so that `hintConf` is honored
-      conf.handleHintConfStart(filename.string)
+      conf.handleRead(cekProgressConfStart, filename.string)
       # localReport(conf, ExternalReport(kind: rextConf, msg: filename.string))
   if conf.cmd == cmdNimscript:
     showHintConf()

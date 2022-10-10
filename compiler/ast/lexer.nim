@@ -95,8 +95,6 @@ type
 
   TokTypes* = set[TokType]
 
-  InstantiationInfo* = typeof(instantiationInfo())
-
   LexerDiagKind* = enum
     # internal errors begin
     lexDiagInternalError ## lexer programming error
@@ -278,7 +276,7 @@ proc closeLexer*(lex: var Lexer) =
     inc(lex.config.linesCompiled, lex.lineNumber)
   closeBaseLexer(lex)
 
-proc getLineInfo(L: Lexer): TLineInfo =
+proc getLineInfo*(L: Lexer): TLineInfo =
   result = newLineInfo(L.fileIdx, L.lineNumber, getColNumber(L, L.bufpos))
 
 proc matchTwoChars(L: Lexer, first: char, second: set[char]): bool =
@@ -334,7 +332,7 @@ from compiler/ast/reports import Report, LexerReport, toReportLineInfo
 from compiler/front/msgs import handleReport
 import std/options as std_options
 
-proc handleDiagReport*(
+proc handleDiagReport(
     conf: ConfigRef,
     diag: LexerDiag,
     reportFrom: InstantiationInfo,
@@ -346,6 +344,7 @@ proc handleDiagReport*(
     case diag.kind
     of lexDiagInternalError: rintIce
     of lexDiagMalformedUnderscores: rlexMalformedUnderscores
+    of lexDiagMalformedTrailingUnderscre: rlexMalformedTrailingUnderscre
     of lexDiagInvalidToken: rlexInvalidToken
     of lexDiagNoTabs: rlexNoTabs
     of lexDiagInvalidIntegerPrefix: rlexInvalidIntegerPrefix
@@ -362,9 +361,6 @@ proc handleDiagReport*(
     of lexDiagDeprecatedOctalPrefix: rlexDeprecatedOctalPrefix
     of lexDiagLineTooLong: rlexLineTooLong
     of lexDiagNameXShouldBeY: rlexLinterReport
-    # else:
-    #   doAssert false, "unhandled lex diag kind: " & $diag.kind
-    #   repNone
 
   var rep = Report(
     category: repLexer,
@@ -381,60 +377,67 @@ proc handleDiagReport*(
   handleReport(conf, rep, reportFrom, eh)
 
 template handleDiag*(L: Lexer, diag: LexerDiag): untyped =
-  L.config.handleDiagReport(diag, instLoc())
+  {.line.}:
+    L.config.handleDiagReport(diag, instLoc())
 
 template handleDiag*(L: Lexer, diag: LexerDiagKind): untyped =
   doAssert diag notin {lexDiagNameXShouldBeY}
-  let d = LexerDiag(location: L.getLineInfo, instLoc: instLoc(), kind: diag)
-  L.config.handleDiagReport(d, instLoc())
+  {.line.}:
+    let d = LexerDiag(location: L.getLineInfo, instLoc: instLoc(), kind: diag)
+    L.config.handleDiagReport(d, instLoc())
 
 template handleDiag*(L: Lexer, diag: LexerDiagKind, message: string): untyped =
   doAssert diag notin {lexDiagNameXShouldBeY}
-  let d = LexerDiag(
-            msg: message, 
-            location: L.getLineInfo, 
-            instLoc: instLoc(), 
-            kind: diag)
-  L.config.handleDiagReport(d, instLoc())
+  {.line.}:
+    let d = LexerDiag(
+              msg: message, 
+              location: L.getLineInfo, 
+              instLoc: instLoc(), 
+              kind: diag)
+    L.config.handleDiagReport(d, instLoc())
 
 template handleDiagPos(L: Lexer, diag: LexerDiagKind, pos: int): untyped =
-  let d = LexerDiag(
-            msg: "",
-            location: newLineInfo(L.fileIdx, L.lineNumber, pos - L.lineStart),
-            instLoc: instLoc(),
-            kind: diag
-          )
-  L.config.handleDiagReport(d, instLoc())
+  {.line.}:
+    let d = LexerDiag(
+              msg: "",
+              location: newLineInfo(L.fileIdx, L.lineNumber, pos - L.lineStart),
+              instLoc: instLoc(),
+              kind: diag
+            )
+    L.config.handleDiagReport(d, instLoc())
 
 template diagLineTooLong(L: Lexer, pos: int): untyped =
-  let d = LexerDiag(
-            msg: "",
-            location: newLineInfo(L.fileIdx, L.lineNumber, pos - L.lineStart),
-            instLoc: instLoc(),
-            kind: lexDiagLineTooLong
-          )
-  L.config.handleDiagReport(d, instLoc())
+  {.line.}:
+    let d = LexerDiag(
+              msg: "",
+              location: newLineInfo(L.fileIdx, L.lineNumber, pos - L.lineStart),
+              instLoc: instLoc(),
+              kind: lexDiagLineTooLong
+            )
+    L.config.handleDiagReport(d, instLoc())
 
 template diagLintName(L: Lexer, wantedName, gotName: string): untyped =
-  let d = LexerDiag(
-            location: L.getLineInfo, 
-            instLoc: instLoc(), 
-            kind: lexDiagNameXShouldBeY, 
-            wanted: wantedName,
-            got: gotName)
+  {.line.}:
+    let d = LexerDiag(
+              location: L.getLineInfo, 
+              instLoc: instLoc(), 
+              kind: lexDiagNameXShouldBeY, 
+              wanted: wantedName,
+              got: gotName)
 
-  L.config.handleDiagReport(d, instLoc())
+    L.config.handleDiagReport(d, instLoc())
 
 template internalError(L: Lexer, message: string): untyped =
   ## Causes an internal error
   ## REFACTOR: this is a temporary bridge into existing reporting
-  let d = LexerDiag(
-            msg: message,
-            location: L.getLineInfo,
-            instLoc: instLoc(),
-            kind: lexDiagInternalError
-          )
-  L.config.handleDiagReport(d, instLoc(), doAbort)
+  {.line.}:
+    let d = LexerDiag(
+              msg: message,
+              location: L.getLineInfo,
+              instLoc: instLoc(),
+              kind: lexDiagInternalError
+            )
+    L.config.handleDiagReport(d, instLoc(), doAbort)
 
 # template localReport*(L: Lexer, report: ReportTypes): untyped =
 #   L.config.handleReport(wrap(report, instLoc(), getLineInfo(L)), instLoc())
