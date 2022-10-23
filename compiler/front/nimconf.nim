@@ -100,8 +100,8 @@ proc handleConfigEvent(
     case evt.kind
     of cekParseExpectedX: rlexExpectedToken
     of cekParseExpectedCloseX: rlexExpectedToken
-    # xxx: rlexExpectedToken is not a "lexer" error, but attempts at code reuse
-    #      perpetuated it -- fix after reporting is untangled.
+    # xxx: rlexExpectedToken is not a "lexer" error, but a misguided attempt at
+    #      code reuse -- fix after reporting is untangled.
     of cekParseExpectedIdent: rparIdentExpected
     of cekInvalidDirective: rlexCfgInvalidDirective
     of cekWriteConfig: rintNimconfWrite
@@ -334,7 +334,6 @@ proc parseDirective(L: var Lexer, tok: var Token; config: ConfigRef; condStack: 
   of wEnd: doEnd(L, tok, condStack)
   of wWrite:
     ppGetTok(L, tok)
-    # TODO: replace this
     L.handleWriteConf:
       strtabs.`%`($tok, config.configVars, {useEnvironment, useKey})
     # L.localReport(InternalReport(

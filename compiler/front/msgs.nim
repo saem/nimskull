@@ -443,6 +443,56 @@ template localReport*(conf: ConfigRef, report: ReportTypes) =
 template localReport*(conf: ConfigRef, report: Report) =
   handleReport(conf, report, instLoc(), doNothing)
 
+# xxx: All the LexerReport stuff needs to go, it should just be the lexer
+#      defined/provided diagnostics/etc that we shouldn't muck with. The
+#      code below is a temporary bridge to work around this until fixed.
+
+from compiler/ast/lexer import LexerDiag, LexerDiagKind
+
+proc handleReport*(
+    conf: ConfigRef,
+    diag: LexerDiag,
+    reportFrom: InstantiationInfo,
+    eh: TErrorHandling = doNothing
+  ) {.inline.} =
+  # REFACTOR: this is a temporary bridge into existing reporting
+
+  let kind =
+    case diag.kind
+    of lexDiagInternalError: rintIce
+    of lexDiagMalformedUnderscores: rlexMalformedUnderscores
+    of lexDiagMalformedTrailingUnderscre: rlexMalformedTrailingUnderscre
+    of lexDiagInvalidToken: rlexInvalidToken
+    of lexDiagNoTabs: rlexNoTabs
+    of lexDiagInvalidIntegerPrefix: rlexInvalidIntegerPrefix
+    of lexDiagInvalidIntegerSuffix: rlexInvalidIntegerSuffix
+    of lexDiagNumberNotInRange: rlexNumberNotInRange
+    of lexDiagExpectedHex: rlexExpectedHex
+    of lexDiagInvalidIntegerLiteral: rlexInvalidIntegerLiteral
+    of lexDiagInvalidCharLiteral: rlexInvalidCharLiteral
+    of lexDiagMissingClosingApostrophe: rlexMissingClosingApostrophe
+    of lexDiagInvalidUnicodeCodepoint: rlexInvalidUnicodeCodepoint
+    of lexDiagUnclosedTripleString: rlexUnclosedTripleString
+    of lexDiagUnclosedSingleString: rlexUnclosedSingleString
+    of lexDiagUnclosedComment: rlexUnclosedComment
+    of lexDiagDeprecatedOctalPrefix: rlexDeprecatedOctalPrefix
+    of lexDiagLineTooLong: rlexLineTooLong
+    of lexDiagNameXShouldBeY: rlexLinterReport
+
+  var rep = Report(
+    category: repLexer,
+    lexReport: LexerReport(
+      location: std_options.some diag.location,
+      reportInst: diag.instLoc.toReportLineInfo,
+      msg: diag.msg,
+      kind: kind))
+  
+  if kind == rlexLinterReport:
+    rep.lexReport.wanted = diag.wanted
+    rep.lexReport.got = diag.got
+
+  handleReport(conf, rep, reportFrom, eh)
+
 proc semReportCountMismatch*(
     kind: ReportKind,
     expected, got: distinct SomeInteger,
