@@ -30,6 +30,7 @@ import
   ],
   compiler/utils/[
     pathutils,
+    idioms,
   ]
 
 type
@@ -159,8 +160,7 @@ proc handleConfigEvent(
           kind: kind,
           msg: evt.msg))
     else:
-      doAssert false, "totally borked"
-      Report() # assert ensure we don't get here
+      unreachable("totally borked, kind: " & $kind)
   
   handleReport(conf, rep, reportFrom, eh)
 
