@@ -219,6 +219,457 @@ type
 
   TNodeKinds* = set[TNodeKind]
 
+  TErrorKind* = enum
+    nekFatal
+
+    nekUserError = "UserError" ## `{.error.}`
+    nekUsageIsError
+    nekCompilesError
+
+    nekCustomError
+    nekCustomPrintMsgAndNodeError
+      ## just like custom error, prints a message and renders wrongNode
+    nekTypeMismatch
+    nekTypeKindMismatch
+    nekAmbiguous
+    nekAmbiguousIdent
+
+    nekCustomUserError
+      ## just like customer error, but reported as a errUser in msgs
+
+    nekNodeNotAllowed
+      ## Generated in `filters.nim`
+
+    nekCannotProveNotNil
+    nekProvablyNil
+
+    # nimsuggest
+    nekSugNoSymbolAtPosition
+
+    # Global Errors
+    nekCustomGlobalError
+      ## just like custom error, but treat it like a "raise" and fast track the
+      ## "graceful" abort of this compilation run, used by `errorreporting` to
+      ## bridge into the existing `msgs.liMessage` and `msgs.handleError`.
+
+    # Module errors
+    nekSystemNeeds
+    nekInvalidModulePath
+    nekInvalidModuleName
+    nekCannotImportItself
+    nekRecursiveInclude
+    nekRecursiveImport
+    nekCannotOpenFile
+    nekExportRequiresToplevel
+    nekExperimentalRequiresToplevel
+    nekMethodRequiresToplevel
+    nekPackageRequiresToplevel
+    nekConverterRequiresToplevel
+    nekImportRequiresToplevel
+    nekUnexpectedToplevelDefer
+    nekUsingRequiresToplevel
+    nekInvalidVisibility
+    nekUnknownPackageName
+    nekUnexpectedInfixInInclude
+
+    # ..
+    nekConflictingExportnims
+    nekNoMagicEqualsForType
+    nekCantConvertLiteralToType
+    nekCantConvertLiteralToRange
+    nekCantComputeOffsetof
+    nekStaticOutOfBounds
+      ## Error generated when semfold or static bound checking sees and
+      ## out-of-bounds index error.
+    nekStaticFieldNotFound # TODO DOC generated in `semfold.nim`, need
+    # better documentation, right now I don't know what exactly this error
+    # means and how to reproduce it in the example code.
+    nekSemfoldOverflow
+    nekSemfoldDivByZero
+    nekSemfoldInvalidConversion
+    nekInvalidIntdefine
+    nekInvalidBooldefine
+
+    # Type definitions
+    nekCaseInUnion
+      ## `{.union.}` type cannot use `case:` statements
+    nekOffsetInUnion
+      ## `{.union.}` type cannot use inheritance and any other features that
+      ##  add implicit chunk of data before the actually listed fields.
+    nekUnexpectedInNewConcept
+    nekTooNestedConcept
+    nekIllegalRecursion
+    nekCannotInferStaticValue
+
+    nekVarVarNotAllowed
+      ## `var lent`, `var var` etc. are not allowed in types
+    nekInvalidOrderInEnum
+    nekSetTooBig
+    nekTIsNotAConcreteType
+    nekProcIsNotAConcreteType
+    nekRangeIsEmpty
+
+    nekCannotInstantiate
+    nekCannotInstantiateWithParameter
+    nekCannotGenerateGenericDestructor
+    nekUndeclaredField
+    nekInheritanceOnlyWorksWithAnEnum # I have **//ABSOLUTELY NO IDEA//**
+    # what this error means. I think I might need to add something like
+    # `rsemWTF`
+    nekExpectedOrdinal
+    nekExpectedOrdinalOrFloat
+    nekExpectedUnholyEnum # yes
+    nekExpectedLow0Discriminant
+    nekExpectedHighCappedDiscriminant
+    nekMissingCaseBranches
+    nekRangeDoesNotSupportNan
+    nekRangeRequiresDotDot
+    nekExpectedRange
+    nekArrayExpectsPositiveRange
+    nekExpectObjectForBase
+    nekExpectNonFinalForBase
+
+    nekTVoidNotAllowed
+    nekExpectedObjectForRegion
+    nekUnexpectedVoidType
+    nekUnexpectedArrayAssignForCstring
+    nekMacroBodyDependsOnGenericTypes
+    nekMalformedNotNilType
+    nekEnableNotNilExperimental
+    nekEnableDotOperatorsExperimental
+    nekEnableCallOperatorExperimental
+    nekExpectedObjectType
+    nekExpectedImportedType
+    nekUnexpectedExportcInAlias
+    nekExpectedDistinctForBorrow
+    nekBorrowTargetNotFound
+    nekConceptInferenceFailed
+    nekConceptPredicateFailed
+
+    # Procedure definition and instantiation
+    nekImplementationNotAllowed
+    nekImplementationExpected
+    nekRedefinitionOf
+    nekDefaultParamIsIncompatible
+    nekDeclarationVisibilityMismatch
+    nekGenericLambdaNowAllowed
+    nekUnexpectedAutoInForwardDeclaration
+    nekUnexpectedClosureOnToplevelProc
+    nekExpectedReturnTypeForIterator
+    nekExpectedReturnTypeForConverter
+    nekExpectedOneArgumentForConverter
+    nekIncompatibleDefaultExpr
+
+    # Call and procedures
+    nekCallTypeMismatch
+    nekCallIndirectTypeMismatch
+    nekCallNotAProcOrField
+      ## unknown or semantically invalid `obj.field`, `obj.call()`
+    nekExpressionCannotBeCalled
+    nekWrongNumberOfArguments
+    nekWrongNumberOfVariables
+    nekWrongNumberOfGenericParams
+    nekNoGenericParamsAllowed
+    nekAmbiguousCall
+    nekCallingConventionMismatch
+    nekHasSideEffects
+    nekCantPassProcvar
+    nekUnlistedRaises
+    nekUnlistedEffects
+    nekOverrideSafetyMismatch
+    nekOverrideLockMismatch
+    nekMissingMethodDispatcher
+    nekNotABaseMethod
+    nekIllegalCallconvCapture
+    nekIllegalMemoryCapture
+    nekIgnoreInvalidForLoop
+    nekMissingGenericParamsForTemplate
+    nekMisplacedMagicType
+    nekCannotInferParameterType
+    nekParameterRequiresAType
+    nekParameterRedefinition
+    nekInvalidExpression
+    nekExpectedNonemptyPattern
+
+    nekTemplateInstantiationTooNested
+    nekMacroInstantiationTooNested
+    nekGenericInstantiationTooNested # TODO write out list of generic,
+    # macro or template instantiations. There is a `pushOwner` called for
+    # each generic instantiation - can this be reused?
+
+    nekInvalidMethodDeclarationOrder # Right now I have no idea what this
+    # error means exactly. It /does/ have a 'sort of' reproducible example
+    # - https://github.com/nim-lang/Nim/issues/5325. No real tests for this
+    # one of course, I mean who needs this, right?
+    nekParameterNotPointerToPartial
+
+    # Statements
+    nekDiscardingVoid
+    nekDiscardingProc
+    nekInvalidControlFlow
+    nekContinueCannotHaveLabel
+    nekUseOrDiscard
+    nekUseOrDiscardExpr
+    nekCannotBeRaised
+    nekCannotRaiseNonException
+    nekExceptionAlreadyHandled
+    nekCannotExceptNativeAndImported
+    nekExpectedSingleFinally
+    nekExpectedSingleGeneralExcept
+    nekCannotConvertToRange
+    nekUsingRequiresType
+    nekUsingDisallowsAssign
+    nekDifferentTypeForReintroducedSymbol
+    nekCannotInferTypeOfLiteral
+    nekCannotInferTypeOfParameter
+    nekProcHasNoConcreteType
+    nekThreadvarCannotInit
+    nekLetNeedsInit
+    nekConstExpressionExpected
+    nekFieldsIteratorCannotContinue
+    nekParallelFieldsDisallowsCase
+    nekNoObjectOrTupleType
+    nekForExpectsIterator
+    nekSelectorMustBeOfCertainTypes
+    nekTypeCannotBeForwarded
+    nekDoubleCompletionOf
+    nekExpectedInvariantParam
+    nekCovariantUsedAsNonCovariant
+    nekContravariantUsedAsNonCovariant
+    nekNonInvariantCannotBeUsedWith
+    nekNonInvariantCnnnotBeUsedInConcepts
+    nekIncorrectResultProcSymbol
+    nekRebidingImplicitDestructor
+    nekRebidingDestructor
+    nekRebidingDeepCopy
+    nekInseparableTypeBoundOp
+    nekUnexpectedTypeBoundOpSignature
+    nekExpectedDestroyOrDeepCopyForOverride
+    nekExpectedObjectForMethod
+    nekUnexpectedPragmaInDefinitionOf
+    nekMisplacedRunnableExample
+
+    # Expressions
+    nekConstantOfTypeHasNoValue
+    nekTypeConversionArgumentMismatch
+    nekUnexpectedEqInObjectConstructor
+    nekIllegalConversion
+    nekCannotBeConvertedTo
+    nekCannotCastToNonConcrete
+    nekCannotCastTypes
+    nekExpectedTypeOrValue
+    nekInvalidArgumentFor
+    nekNoTupleTypeForConstructor
+    nekInvalidTupleConstructor
+    nekUnknownIdentifier
+    nekIndexOutOfBounds
+    nekInvalidOrderInArrayConstructor
+    nekVarForOutParamNeeded
+    nekStackEscape
+    nekExprHasNoAddress
+    nekUnknownTrait
+    nekStringOrIdentNodeExpected
+    nekExpectedObjectForOf
+    nekCannotBeOfSubtype
+    nekQuantifierInRangeExpected
+    nekOldTakesParameterName
+    nekOldDoesNotBelongTo
+    nekCannotFindPlugin
+    nekExpectedProcReferenceForFinalizer
+    nekCannotIsolate
+    nekCannotInterpretNode
+    nekRecursiveDependencyIterator
+    nekIllegalNimvmContext
+    nekDisallowedNilDeref
+    nekInvalidTupleSubscript
+    nekLocalEscapesStackFrame
+    nekImplicitAddrIsNotFirstParam
+    nekExpectedOwnerReturn
+    nekExpectedUnownedRef
+    nekCannotAssignTo
+    nekNoReturnTypeDeclared
+    nekReturnNotAllowed
+    nekCannotInferReturnType
+    nekExpectedValueForYield
+    nekUnexpectedYield
+    nekCannotReturnTypeless
+    nekExpectedMacroOrTemplate
+    nekAmbiguousGetAst
+    nekExpectedTemplateWithNArgs
+    nekExpectedCallForGetAst
+    nekWrongNumberOfQuoteArguments
+    nekNamedExprExpected
+    nekNamedExprNotAllowed
+    nekFieldInitTwice
+    nekDisallowedTypedescForTupleField
+    nekDisjointFields
+    nekUnsafeRuntimeDiscriminantInit
+    nekConflictingDiscriminantInit
+    nekConflictingDiscriminantValues
+    nekRuntimeDiscriminantInitCap
+    nekRuntimeDiscriminantMustBeImmutable
+    nekRuntimeDiscriminantRequiresElif
+    nekObjectRequiresFieldInit
+    nekObjectRequiresFieldInitNoDefault
+    nekDistinctDoesNotHaveDefaultValue
+    nekExpectedModuleNameForImportExcept
+    nekCannotExport
+    nekCannotMixTypesAndValuesInTuple
+    nekExpectedTypelessDeferBody
+    nekInvalidBindContext
+    nekCannotCreateImplicitOpenarray
+    nekCannotAssignToDiscriminantWithCustomDestructor
+    nekUnavailableTypeBound
+
+    # Identifier Lookup
+    nekUndeclaredIdentifier
+    nekExpectedIdentifier
+    nekExpectedIdentifierInExpr
+    nekOnlyDeclaredIdentifierFoundIsError
+
+    # Object and Object Construction
+    nekFieldNotAccessible
+      ## object field is not accessible
+    nekFieldAssignmentInvalid
+      ## object field assignment invalid syntax
+    nekFieldOkButAssignedValueInvalid
+      ## object field assignment, where the field name is ok, but value is not
+    nekObjectConstructorIncorrect
+      ## one or more issues encountered with object constructor
+
+    # General Type Checks
+    nekExpressionHasNoType
+      ## an expression has not type or is ambiguous
+
+    nekRawTypeMismatch
+
+    nekCannotConvertTypes
+    nekUnresolvedGenericParameter
+    nekCannotCreateFlowVarOfType
+    nekTypeNotAllowed
+
+    # Literals
+    nekIntLiteralExpected
+      ## int literal node was expected, but got something else
+    nekStringLiteralExpected
+      ## string literal node was expected, but got something else
+
+    nekOnOrOffExpected
+    nekCallconvExpected
+    nekUnknownExperimental
+    nekDuplicateCaseLabel
+
+    # view types
+    nekExpressionIsNotAPath
+    nekResultMustBorrowFirst
+    nekCannotDetermineBorrowTarget # TODO DOC need better explanation for
+    # reasons of this error, right now it looks like a hacked-in check.
+    nekCannotBorrow
+    nekBorrowOutlivesSource
+    nekImmutableBorrowMutation
+
+    nekCyclicTree
+    nekCyclicDependency
+    nekConstExprExpected
+
+    # Codegen
+    nekRttiRequestForIncompleteObject
+    nekExpectedNimcallProc
+    nekExpectedExhaustiveCaseForComputedGoto
+    nekExpectedUnholyEnumForComputedGoto
+    nekTooManyEntriesForComputedGoto
+    nekExpectedLow0ForComputedGoto
+    nekExpectedCaseForComputedGoto
+    nekDisallowedRangeForComputedGoto
+    nekExpectedCallForCxxPattern
+    nekExpectedParameterForCxxPattern
+    nekExpectedLiteralForGoto
+    nekRequiresDeepCopyEnabled
+    nekDisallowedOfForPureObjects
+    nekDisallowedReprForNewruntime
+    nekCannotCodegenCompiletimeProc
+
+    # Pragma
+    nekInvalidPragma
+      ## suplied pragma is invalid
+    nekUnexpectedPragma
+    nekPropositionExpected
+    nekIllegalCustomPragma
+      ## supplied pragma is not a legal custom pragma, and cannot be attached
+    nekNoReturnHasReturn
+      ## a routine marked as no return, has a return type
+    nekImplicitPragmaError
+      ## a symbol encountered an error when processing implicit pragmas, this
+      ## should be applied to symbols and treated as a wrapper for the purposes
+      ## of reporting. the original symbol is stored as the first argument
+    nekPragmaDynlibRequiresExportc
+      ## much the same as `ImplicitPragmaError`, except it's a special case
+      ## where dynlib pragma requires an importc pragma to exist on the same
+      ## symbol
+      ## xxx: pragmas shouldn't require each other, that's just bad design
+
+    nekWrappedError
+      ## there is no meaningful error to construct, but there is an error
+      ## further down the AST that invalidates the whole
+
+    nekPragmaDisallowedForTupleUnpacking
+      ## we disallow pragma blocks `let (foo {.somePragma.}, bar) = (1,2)` as
+      ## the semantics of pragmas in the face of unpacking are not woefully
+      ## underspecified. This is not a matter of reenabling it as a rethinking
+      ## the approach from a first principles perspective is required.
+
+    nekSymbolKindMismatch
+    nekIllformedAst
+    nekInitHereNotAllowed
+    nekIdentExpectedInExpr
+    nekTypeExpected
+    nekGenericTypeExpected
+    nekTypeInvalid
+    nekWrongIdent
+    nekPragmaOptionExpected
+    nekUnexpectedPushArgument
+    nekCannotPushCast
+    nekCastRequiresStatement
+    nekExportcppRequiresCpp
+    nekDynlibRequiresExportc
+    nekImportjsRequiresJs
+    nekImportjsRequiresPattern
+    nekBitsizeRequires1248
+    nekBitsizeRequiresPositive
+    nekAlignRequiresPowerOfTwo
+    nekPragmaRecursiveDependency
+    nekMisplacedDeprecation
+    nekNoUnionForJs
+
+    nekThisPragmaRequires01Args
+    nekMismatchedPopPush
+    nekExcessiveCompilePragmaArgs
+    nekLinePragmaExpectsTuple
+    nekRaisesPragmaExpectsObject
+
+    # -- locking
+    nekLocksPragmaExpectsList
+    nekLocksPragmaBadLevel
+    nekLocksRequiresArgs
+    nekMultilockRequiresSameLevel
+    nekInvalidNestedLocking
+    nekUnguardedAccess
+    nekInvalidGuardField
+
+    nekStaticIndexLeqUnprovable
+    nekStaticIndexGeProvable
+
+    nekErrGcUnsafeListing
+    nekBorrowPragmaNonDot
+    nekInvalidExtern
+    nekInvalidPragmaBlock
+    nekBadDeprecatedArgs
+    nekMisplacedEffectsOf
+    nekMissingPragmaArg
+    nekErrGcUnsafe
+    nekEmptyAsm
+
+
 type
   TSymFlag* = enum    # 48 flags!
     sfUsed            ## read access of sym (for warnings) or simply used
@@ -798,10 +1249,20 @@ type
     of nkEmpty, nkNone:
       discard
     of nkError:
-      reportId*: ReportId
+      errorData*: PErrorData #
       kids*: TNodeSeq
     else:
       sons*: TNodeSeq
+
+  PErrorData* = ref TErrorData ## ref to save storage in `TNode`
+  TErrorData* {.acyclic.} = object
+    errId*: int
+    case kind*: TErrorKind
+    of nekCannotConvertTypes: 
+    of nekWrappedError, nekTypelessParam:   # empty
+      discard
+    else:
+      discard
 
   TStrTable* = object         ## a table[PIdent] of PSym
     counter*: int
@@ -1178,3 +1639,354 @@ proc `comment=`*(n: PNode, a: string) =
     gconfig.comments.del(n.id)
 
 proc setUseIc*(useIc: bool) = gconfig.useIc = useIc
+
+func nodeErrorToLegacyReportKind*(k: TErrorKind): ReportKind =
+  case errKind
+  of nekFatal: rsemFatal
+  of nekUserError: rsemUserError
+  of nekUsageIsError: rsemUsageIsError
+  of nekCompilesError: rsemCompilesError
+  of nekCustomError: rsemCustomError
+  of nekCustomPrintMsgAndNodeError: rsemCustomPrintMsgAndNodeError
+  of nekTypeMismatch: rsemTypeMismatch
+  of nekTypeKindMismatch: rsemTypeKindMismatch
+  of nekAmbiguous: rsemAmbiguous
+  of nekAmbiguousIdent: rsemAmbiguousIdent
+  of nekCustomUserError: rsemCustomUserError
+  of nekNodeNotAllowed: rsemNodeNotAllowed
+  of nekCannotProveNotNil: rsemCannotProveNotNil
+  of nekProvablyNil: rsemProvablyNil
+  of nekSugNoSymbolAtPosition: rsemSugNoSymbolAtPosition
+  of nekCustomGlobalError: rsemCustomGlobalError
+  of nekSystemNeeds: rsemSystemNeeds
+  of nekInvalidModulePath: rsemInvalidModulePath
+  of nekInvalidModuleName: rsemInvalidModuleName
+  of nekCannotImportItself: rsemCannotImportItself
+  of nekRecursiveInclude: rsemRecursiveInclude
+  of nekRecursiveImport: rsemRecursiveImport
+  of nekCannotOpenFile: rsemCannotOpenFile
+  of nekExportRequiresToplevel: rsemExportRequiresToplevel
+  of nekExperimentalRequiresToplevel: rsemExperimentalRequiresToplevel
+  of nekMethodRequiresToplevel: rsemMethodRequiresToplevel
+  of nekPackageRequiresToplevel: rsemPackageRequiresToplevel
+  of nekConverterRequiresToplevel: rsemConverterRequiresToplevel
+  of nekImportRequiresToplevel: rsemImportRequiresToplevel
+  of nekUnexpectedToplevelDefer: rsemUnexpectedToplevelDefer
+  of nekUsingRequiresToplevel: rsemUsingRequiresToplevel
+  of nekInvalidVisibility: rsemInvalidVisibility
+  of nekUnknownPackageName: rsemUnknownPackageName
+  of nekUnexpectedInfixInInclude: rsemUnexpectedInfixInInclude
+  of nekConflictingExportnims: rsemConflictingExportnims
+  of nekNoMagicEqualsForType: rsemNoMagicEqualsForType
+  of nekCantConvertLiteralToType: rsemCantConvertLiteralToType
+  of nekCantConvertLiteralToRange: rsemCantConvertLiteralToRange
+  of nekCantComputeOffsetof: rsemCantComputeOffsetof
+  of nekStaticOutOfBounds: rsemStaticOutOfBounds
+  of nekStaticFieldNotFound: rsemStaticFieldNotFound
+  of nekSemfoldOverflow: rsemSemfoldOverflow
+  of nekSemfoldDivByZero: rsemSemfoldDivByZero
+  of nekSemfoldInvalidConversion: rsemSemfoldInvalidConversion
+  of nekInvalidIntdefine: rsemInvalidIntdefine
+  of nekInvalidBooldefine: rsemInvalidBooldefine
+  of nekCaseInUnion: rsemCaseInUnion
+  of nekOffsetInUnion: rsemOffsetInUnion
+  of nekUnexpectedInNewConcept: rsemUnexpectedInNewConcept
+  of nekTooNestedConcept: rsemTooNestedConcept
+  of nekIllegalRecursion: rsemIllegalRecursion
+  of nekCannotInferStaticValue: rsemCannotInferStaticValue
+  of nekVarVarNotAllowed: rsemVarVarNotAllowed
+  of nekInvalidOrderInEnum: rsemInvalidOrderInEnum
+  of nekSetTooBig: rsemSetTooBig
+  of nekTIsNotAConcreteType: rsemTIsNotAConcreteType
+  of nekProcIsNotAConcreteType: rsemProcIsNotAConcreteType
+  of nekRangeIsEmpty: rsemRangeIsEmpty
+  of nekCannotInstantiate: rsemCannotInstantiate
+  of nekCannotInstantiateWithParameter: rsemCannotInstantiateWithParameter
+  of nekCannotGenerateGenericDestructor: rsemCannotGenerateGenericDestructor
+  of nekUndeclaredField: rsemUndeclaredField
+  of nekInheritanceOnlyWorksWithAnEnum: rsemInheritanceOnlyWorksWithAnEnum
+  of nekExpectedOrdinal: rsemExpectedOrdinal
+  of nekExpectedOrdinalOrFloat: rsemExpectedOrdinalOrFloat
+  of nekExpectedUnholyEnum: rsemExpectedUnholyEnum # yes
+  of nekExpectedLow0Discriminant: rsemExpectedLow0Discriminant
+  of nekExpectedHighCappedDiscriminant: rsemExpectedHighCappedDiscriminant
+  of nekMissingCaseBranches: rsemMissingCaseBranches
+  of nekRangeDoesNotSupportNan: rsemRangeDoesNotSupportNan
+  of nekRangeRequiresDotDot: rsemRangeRequiresDotDot
+  of nekExpectedRange: rsemExpectedRange
+  of nekArrayExpectsPositiveRange: rsemArrayExpectsPositiveRange
+  of nekExpectObjectForBase: rsemExpectObjectForBase
+  of nekExpectNonFinalForBase: rsemExpectNonFinalForBase
+  of nekTVoidNotAllowed: rsemTVoidNotAllowed
+  of nekExpectedObjectForRegion: rsemExpectedObjectForRegion
+  of nekUnexpectedVoidType: rsemUnexpectedVoidType
+  of nekUnexpectedArrayAssignForCstring: rsemUnexpectedArrayAssignForCstring
+  of nekMacroBodyDependsOnGenericTypes: rsemMacroBodyDependsOnGenericTypes
+  of nekMalformedNotNilType: rsemMalformedNotNilType
+  of nekEnableNotNilExperimental: rsemEnableNotNilExperimental
+  of nekEnableDotOperatorsExperimental: rsemEnableDotOperatorsExperimental
+  of nekEnableCallOperatorExperimental: rsemEnableCallOperatorExperimental
+  of nekExpectedObjectType: rsemExpectedObjectType
+  of nekExpectedImportedType: rsemExpectedImportedType
+  of nekUnexpectedExportcInAlias: rsemUnexpectedExportcInAlias
+  of nekExpectedDistinctForBorrow: rsemExpectedDistinctForBorrow
+  of nekBorrowTargetNotFound: rsemBorrowTargetNotFound
+  of nekConceptInferenceFailed: rsemConceptInferenceFailed
+  of nekConceptPredicateFailed: rsemConceptPredicateFailed
+  of nekImplementationNotAllowed: rsemImplementationNotAllowed
+  of nekImplementationExpected: rsemImplementationExpected
+  of nekRedefinitionOf: rsemRedefinitionOf
+  of nekDefaultParamIsIncompatible: rsemDefaultParamIsIncompatible
+  of nekDeclarationVisibilityMismatch: rsemDeclarationVisibilityMismatch
+  of nekGenericLambdaNowAllowed: rsemGenericLambdaNowAllowed
+  of nekUnexpectedAutoInForwardDeclaration: rsemUnexpectedAutoInForwardDeclaration
+  of nekUnexpectedClosureOnToplevelProc: rsemUnexpectedClosureOnToplevelProc
+  of nekExpectedReturnTypeForIterator: rsemExpectedReturnTypeForIterator
+  of nekExpectedReturnTypeForConverter: rsemExpectedReturnTypeForConverter
+  of nekExpectedOneArgumentForConverter: rsemExpectedOneArgumentForConverter
+  of nekIncompatibleDefaultExpr: rsemIncompatibleDefaultExpr
+  of nekCallTypeMismatch: rsemCallTypeMismatch
+  of nekCallIndirectTypeMismatch: rsemCallIndirectTypeMismatch
+  of nekCallNotAProcOrField: rsemCallNotAProcOrField
+  of nekExpressionCannotBeCalled: rsemExpressionCannotBeCalled
+  of nekWrongNumberOfArguments: rsemWrongNumberOfArguments
+  of nekWrongNumberOfVariables: rsemWrongNumberOfVariables
+  of nekWrongNumberOfGenericParams: rsemWrongNumberOfGenericParams
+  of nekNoGenericParamsAllowed: rsemNoGenericParamsAllowed
+  of nekAmbiguousCall: rsemAmbiguousCall
+  of nekCallingConventionMismatch: rsemCallingConventionMismatch
+  of nekHasSideEffects: rsemHasSideEffects
+  of nekCantPassProcvar: rsemCantPassProcvar
+  of nekUnlistedRaises: rsemUnlistedRaises
+  of nekUnlistedEffects: rsemUnlistedEffects
+  of nekOverrideSafetyMismatch: rsemOverrideSafetyMismatch
+  of nekOverrideLockMismatch: rsemOverrideLockMismatch
+  of nekMissingMethodDispatcher: rsemMissingMethodDispatcher
+  of nekNotABaseMethod: rsemNotABaseMethod
+  of nekIllegalCallconvCapture: rsemIllegalCallconvCapture
+  of nekIllegalMemoryCapture: rsemIllegalMemoryCapture
+  of nekIgnoreInvalidForLoop: rsemIgnoreInvalidForLoop
+  of nekMissingGenericParamsForTemplate: rsemMissingGenericParamsForTemplate
+  of nekMisplacedMagicType: rsemMisplacedMagicType
+  of nekCannotInferParameterType: rsemCannotInferParameterType
+  of nekParameterRequiresAType: rsemParameterRequiresAType
+  of nekParameterRedefinition: rsemParameterRedefinition
+  of nekInvalidExpression: rsemInvalidExpression
+  of nekExpectedNonemptyPattern: rsemExpectedNonemptyPattern
+  of nekTemplateInstantiationTooNested: rsemTemplateInstantiationTooNested
+  of nekMacroInstantiationTooNested: rsemMacroInstantiationTooNested
+  of nekGenericInstantiationTooNested: rsemGenericInstantiationTooNested
+  of nekInvalidMethodDeclarationOrder: rsemInvalidMethodDeclarationOrder
+  of nekParameterNotPointerToPartial: rsemParameterNotPointerToPartial
+  of nekDiscardingVoid: rsemDiscardingVoid
+  of nekDiscardingProc: rsemDiscardingProc
+  of nekInvalidControlFlow: rsemInvalidControlFlow
+  of nekContinueCannotHaveLabel: rsemContinueCannotHaveLabel
+  of nekUseOrDiscard: rsemUseOrDiscard
+  of nekUseOrDiscardExpr: rsemUseOrDiscardExpr
+  of nekCannotBeRaised: rsemCannotBeRaised
+  of nekCannotRaiseNonException: rsemCannotRaiseNonException
+  of nekExceptionAlreadyHandled: rsemExceptionAlreadyHandled
+  of nekCannotExceptNativeAndImported: rsemCannotExceptNativeAndImported
+  of nekExpectedSingleFinally: rsemExpectedSingleFinally
+  of nekExpectedSingleGeneralExcept: rsemExpectedSingleGeneralExcept
+  of nekCannotConvertToRange: rsemCannotConvertToRange
+  of nekUsingRequiresType: rsemUsingRequiresType
+  of nekUsingDisallowsAssign: rsemUsingDisallowsAssign
+  of nekDifferentTypeForReintroducedSymbol: rsemDifferentTypeForReintroducedSymbol
+  of nekCannotInferTypeOfLiteral: rsemCannotInferTypeOfLiteral
+  of nekCannotInferTypeOfParameter: rsemCannotInferTypeOfParameter
+  of nekProcHasNoConcreteType: rsemProcHasNoConcreteType
+  of nekThreadvarCannotInit: rsemThreadvarCannotInit
+  of nekLetNeedsInit: rsemLetNeedsInit
+  of nekConstExpressionExpected: rsemConstExpressionExpected
+  of nekFieldsIteratorCannotContinue: rsemFieldsIteratorCannotContinue
+  of nekParallelFieldsDisallowsCase: rsemParallelFieldsDisallowsCase
+  of nekNoObjectOrTupleType: rsemNoObjectOrTupleType
+  of nekForExpectsIterator: rsemForExpectsIterator
+  of nekSelectorMustBeOfCertainTypes: rsemSelectorMustBeOfCertainTypes
+  of nekTypeCannotBeForwarded: rsemTypeCannotBeForwarded
+  of nekDoubleCompletionOf: rsemDoubleCompletionOf
+  of nekExpectedInvariantParam: rsemExpectedInvariantParam
+  of nekCovariantUsedAsNonCovariant: rsemCovariantUsedAsNonCovariant
+  of nekContravariantUsedAsNonCovariant: rsemContravariantUsedAsNonCovariant
+  of nekNonInvariantCannotBeUsedWith: rsemNonInvariantCannotBeUsedWith
+  of nekNonInvariantCnnnotBeUsedInConcepts: rsemNonInvariantCnnnotBeUsedInConcepts
+  of nekIncorrectResultProcSymbol: rsemIncorrectResultProcSymbol
+  of nekRebidingImplicitDestructor: rsemRebidingImplicitDestructor
+  of nekRebidingDestructor: rsemRebidingDestructor
+  of nekRebidingDeepCopy: rsemRebidingDeepCopy
+  of nekInseparableTypeBoundOp: rsemInseparableTypeBoundOp
+  of nekUnexpectedTypeBoundOpSignature: rsemUnexpectedTypeBoundOpSignature
+  of nekExpectedDestroyOrDeepCopyForOverride: rsemExpectedDestroyOrDeepCopyForOverride
+  of nekExpectedObjectForMethod: rsemExpectedObjectForMethod
+  of nekUnexpectedPragmaInDefinitionOf: rsemUnexpectedPragmaInDefinitionOf
+  of nekMisplacedRunnableExample: rsemMisplacedRunnableExample
+  of nekConstantOfTypeHasNoValue: rsemConstantOfTypeHasNoValue
+  of nekTypeConversionArgumentMismatch: rsemTypeConversionArgumentMismatch
+  of nekUnexpectedEqInObjectConstructor: rsemUnexpectedEqInObjectConstructor
+  of nekIllegalConversion: rsemIllegalConversion
+  of nekCannotBeConvertedTo: rsemCannotBeConvertedTo
+  of nekCannotCastToNonConcrete: rsemCannotCastToNonConcrete
+  of nekCannotCastTypes: rsemCannotCastTypes
+  of nekExpectedTypeOrValue: rsemExpectedTypeOrValue
+  of nekInvalidArgumentFor: rsemInvalidArgumentFor
+  of nekNoTupleTypeForConstructor: rsemNoTupleTypeForConstructor
+  of nekInvalidTupleConstructor: rsemInvalidTupleConstructor
+  of nekUnknownIdentifier: rsemUnknownIdentifier
+  of nekIndexOutOfBounds: rsemIndexOutOfBounds
+  of nekInvalidOrderInArrayConstructor: rsemInvalidOrderInArrayConstructor
+  of nekVarForOutParamNeeded: rsemVarForOutParamNeeded
+  of nekStackEscape: rsemStackEscape
+  of nekExprHasNoAddress: rsemExprHasNoAddress
+  of nekUnknownTrait: rsemUnknownTrait
+  of nekStringOrIdentNodeExpected: rsemStringOrIdentNodeExpected
+  of nekExpectedObjectForOf: rsemExpectedObjectForOf
+  of nekCannotBeOfSubtype: rsemCannotBeOfSubtype
+  of nekQuantifierInRangeExpected: rsemQuantifierInRangeExpected
+  of nekOldTakesParameterName: rsemOldTakesParameterName
+  of nekOldDoesNotBelongTo: rsemOldDoesNotBelongTo
+  of nekCannotFindPlugin: rsemCannotFindPlugin
+  of nekExpectedProcReferenceForFinalizer: rsemExpectedProcReferenceForFinalizer
+  of nekCannotIsolate: rsemCannotIsolate
+  of nekCannotInterpretNode: rsemCannotInterpretNode
+  of nekRecursiveDependencyIterator: rsemRecursiveDependencyIterator
+  of nekIllegalNimvmContext: rsemIllegalNimvmContext
+  of nekDisallowedNilDeref: rsemDisallowedNilDeref
+  of nekInvalidTupleSubscript: rsemInvalidTupleSubscript
+  of nekLocalEscapesStackFrame: rsemLocalEscapesStackFrame
+  of nekImplicitAddrIsNotFirstParam: rsemImplicitAddrIsNotFirstParam
+  of nekExpectedOwnerReturn: rsemExpectedOwnerReturn
+  of nekExpectedUnownedRef: rsemExpectedUnownedRef
+  of nekCannotAssignTo: rsemCannotAssignTo
+  of nekNoReturnTypeDeclared: rsemNoReturnTypeDeclared
+  of nekReturnNotAllowed: rsemReturnNotAllowed
+  of nekCannotInferReturnType: rsemCannotInferReturnType
+  of nekExpectedValueForYield: rsemExpectedValueForYield
+  of nekUnexpectedYield: rsemUnexpectedYield
+  of nekCannotReturnTypeless: rsemCannotReturnTypeless
+  of nekExpectedMacroOrTemplate: rsemExpectedMacroOrTemplate
+  of nekAmbiguousGetAst: rsemAmbiguousGetAst
+  of nekExpectedTemplateWithNArgs: rsemExpectedTemplateWithNArgs
+  of nekExpectedCallForGetAst: rsemExpectedCallForGetAst
+  of nekWrongNumberOfQuoteArguments: rsemWrongNumberOfQuoteArguments
+  of nekNamedExprExpected: rsemNamedExprExpected
+  of nekNamedExprNotAllowed: rsemNamedExprNotAllowed
+  of nekFieldInitTwice: rsemFieldInitTwice
+  of nekDisallowedTypedescForTupleField: rsemDisallowedTypedescForTupleField
+  of nekDisjointFields: rsemDisjointFields
+  of nekUnsafeRuntimeDiscriminantInit: rsemUnsafeRuntimeDiscriminantInit
+  of nekConflictingDiscriminantInit: rsemConflictingDiscriminantInit
+  of nekConflictingDiscriminantValues: rsemConflictingDiscriminantValues
+  of nekRuntimeDiscriminantInitCap: rsemRuntimeDiscriminantInitCap
+  of nekRuntimeDiscriminantMustBeImmutable: rsemRuntimeDiscriminantMustBeImmutable
+  of nekRuntimeDiscriminantRequiresElif: rsemRuntimeDiscriminantRequiresElif
+  of nekObjectRequiresFieldInit: rsemObjectRequiresFieldInit
+  of nekObjectRequiresFieldInitNoDefault: rsemObjectRequiresFieldInitNoDefault
+  of nekDistinctDoesNotHaveDefaultValue: rsemDistinctDoesNotHaveDefaultValue
+  of nekExpectedModuleNameForImportExcept: rsemExpectedModuleNameForImportExcept
+  of nekCannotExport: rsemCannotExport
+  of nekCannotMixTypesAndValuesInTuple: rsemCannotMixTypesAndValuesInTuple
+  of nekExpectedTypelessDeferBody: rsemExpectedTypelessDeferBody
+  of nekInvalidBindContext: rsemInvalidBindContext
+  of nekCannotCreateImplicitOpenarray: rsemCannotCreateImplicitOpenarray
+  of nekCannotAssignToDiscriminantWithCustomDestructor: rsemCannotAssignToDiscriminantWithCustomDestructor
+  of nekUnavailableTypeBound: rsemUnavailableTypeBound
+  of nekUndeclaredIdentifier: rsemUndeclaredIdentifier
+  of nekExpectedIdentifier: rsemExpectedIdentifier
+  of nekExpectedIdentifierInExpr: rsemExpectedIdentifierInExpr
+  of nekOnlyDeclaredIdentifierFoundIsError: rsemOnlyDeclaredIdentifierFoundIsError
+  of nekFieldNotAccessible: rsemFieldNotAccessible
+  of nekFieldAssignmentInvalid: rsemFieldAssignmentInvalid
+  of nekFieldOkButAssignedValueInvalid: rsemFieldOkButAssignedValueInvalid
+  of nekObjectConstructorIncorrect: rsemObjectConstructorIncorrect
+  of nekExpressionHasNoType: rsemExpressionHasNoType
+  of nekRawTypeMismatch: rsemRawTypeMismatch
+  of nekCannotConvertTypes: rsemCannotConvertTypes
+  of nekUnresolvedGenericParameter: rsemUnresolvedGenericParameter
+  of nekCannotCreateFlowVarOfType: rsemCannotCreateFlowVarOfType
+  of nekTypeNotAllowed: rsemTypeNotAllowed
+  of nekIntLiteralExpected: rsemIntLiteralExpected
+  of nekStringLiteralExpected: rsemStringLiteralExpected
+  of nekOnOrOffExpected: rsemOnOrOffExpected
+  of nekCallconvExpected: rsemCallconvExpected
+  of nekUnknownExperimental: rsemUnknownExperimental
+  of nekDuplicateCaseLabel: rsemDuplicateCaseLabel
+  of nekExpressionIsNotAPath: rsemExpressionIsNotAPath
+  of nekResultMustBorrowFirst: rsemResultMustBorrowFirst
+  of nekCannotDetermineBorrowTarget: rsemCannotDetermineBorrowTarget
+  of nekCannotBorrow: rsemCannotBorrow
+  of nekBorrowOutlivesSource: rsemBorrowOutlivesSource
+  of nekImmutableBorrowMutation: rsemImmutableBorrowMutation
+  of nekCyclicTree: rsemCyclicTree
+  of nekCyclicDependency: rsemCyclicDependency
+  of nekConstExprExpected: rsemConstExprExpected
+  of nekRttiRequestForIncompleteObject: rsemRttiRequestForIncompleteObject
+  of nekExpectedNimcallProc: rsemExpectedNimcallProc
+  of nekExpectedExhaustiveCaseForComputedGoto: rsemExpectedExhaustiveCaseForComputedGoto
+  of nekExpectedUnholyEnumForComputedGoto: rsemExpectedUnholyEnumForComputedGoto
+  of nekTooManyEntriesForComputedGoto: rsemTooManyEntriesForComputedGoto
+  of nekExpectedLow0ForComputedGoto: rsemExpectedLow0ForComputedGoto
+  of nekExpectedCaseForComputedGoto: rsemExpectedCaseForComputedGoto
+  of nekDisallowedRangeForComputedGoto: rsemDisallowedRangeForComputedGoto
+  of nekExpectedCallForCxxPattern: rsemExpectedCallForCxxPattern
+  of nekExpectedParameterForCxxPattern: rsemExpectedParameterForCxxPattern
+  of nekExpectedLiteralForGoto: rsemExpectedLiteralForGoto
+  of nekRequiresDeepCopyEnabled: rsemRequiresDeepCopyEnabled
+  of nekDisallowedOfForPureObjects: rsemDisallowedOfForPureObjects
+  of nekDisallowedReprForNewruntime: rsemDisallowedReprForNewruntime
+  of nekCannotCodegenCompiletimeProc: rsemCannotCodegenCompiletimeProc
+  of nekInvalidPragma: rsemInvalidPragma
+  of nekUnexpectedPragma: rsemUnexpectedPragma
+  of nekPropositionExpected: rsemPropositionExpected
+  of nekIllegalCustomPragma: rsemIllegalCustomPragma
+  of nekNoReturnHasReturn: rsemNoReturnHasReturn
+  of nekImplicitPragmaError: rsemImplicitPragmaError
+  of nekPragmaDynlibRequiresExportc: rsemPragmaDynlibRequiresExportc
+  of nekWrappedError: rsemWrappedError
+  of nekPragmaDisallowedForTupleUnpacking: rsemPragmaDisallowedForTupleUnpacking
+  of nekSymbolKindMismatch: rsemSymbolKindMismatch
+  of nekIllformedAst: rsemIllformedAst
+  of nekInitHereNotAllowed: rsemInitHereNotAllowed
+  of nekIdentExpectedInExpr: rsemIdentExpectedInExpr
+  of nekTypeExpected: rsemTypeExpected
+  of nekGenericTypeExpected: rsemGenericTypeExpected
+  of nekTypeInvalid: rsemTypeInvalid
+  of nekWrongIdent: rsemWrongIdent
+  of nekPragmaOptionExpected: rsemPragmaOptionExpected
+  of nekUnexpectedPushArgument: rsemUnexpectedPushArgument
+  of nekCannotPushCast: rsemCannotPushCast
+  of nekCastRequiresStatement: rsemCastRequiresStatement
+  of nekExportcppRequiresCpp: rsemExportcppRequiresCpp
+  of nekDynlibRequiresExportc: rsemDynlibRequiresExportc
+  of nekImportjsRequiresJs: rsemImportjsRequiresJs
+  of nekImportjsRequiresPattern: rsemImportjsRequiresPattern
+  of nekBitsizeRequires1248: rsemBitsizeRequires1248
+  of nekBitsizeRequiresPositive: rsemBitsizeRequiresPositive
+  of nekAlignRequiresPowerOfTwo: rsemAlignRequiresPowerOfTwo
+  of nekPragmaRecursiveDependency: rsemPragmaRecursiveDependency
+  of nekMisplacedDeprecation: rsemMisplacedDeprecation
+  of nekNoUnionForJs: rsemNoUnionForJs
+  of nekThisPragmaRequires01Args: rsemThisPragmaRequires01Args
+  of nekMismatchedPopPush: rsemMismatchedPopPush
+  of nekExcessiveCompilePragmaArgs: rsemExcessiveCompilePragmaArgs
+  of nekLinePragmaExpectsTuple: rsemLinePragmaExpectsTuple
+  of nekRaisesPragmaExpectsObject: rsemRaisesPragmaExpectsObject
+  of nekLocksPragmaExpectsList: rsemLocksPragmaExpectsList
+  of nekLocksPragmaBadLevel: rsemLocksPragmaBadLevel
+  of nekLocksRequiresArgs: rsemLocksRequiresArgs
+  of nekMultilockRequiresSameLevel: rsemMultilockRequiresSameLevel
+  of nekInvalidNestedLocking: rsemInvalidNestedLocking
+  of nekUnguardedAccess: rsemUnguardedAccess
+  of nekInvalidGuardField: rsemInvalidGuardField
+  of nekStaticIndexLeqUnprovable: rsemStaticIndexLeqUnprovable
+  of nekStaticIndexGeProvable: rsemStaticIndexGeProvable
+  of nekErrGcUnsafeListing: rsemErrGcUnsafeListing
+  of nekBorrowPragmaNonDot: rsemBorrowPragmaNonDot
+  of nekInvalidExtern: rsemInvalidExtern
+  of nekInvalidPragmaBlock: rsemInvalidPragmaBlock
+  of nekBadDeprecatedArgs: rsemBadDeprecatedArgs
+  of nekMisplacedEffectsOf: rsemMisplacedEffectsOf
+  of nekMissingPragmaArg: rsemMissingPragmaArg
+  of nekErrGcUnsafe: rsemErrGcUnsafe
+  of nekEmptyAsm: rsemEmptyAsm
