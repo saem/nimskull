@@ -153,7 +153,10 @@ type
       discard
 
 const
-  LexDiagsFatal = {lexDiagInternalError}
+  LexDiagsFatal*   = {lexDiagInternalError}
+  LexDiagsError*   = {lexDiagMalformedUnderscores..lexDiagUnclosedComment}
+  LexDiagsWarning* = {lexDiagDeprecatedOctalPrefix}
+  LexDiagsHint*    = {lexDiagLineTooLong..lexDiagNameXShouldBeY}
 
 when defined(nimsuggest):
   const weakTokens = {tkComma, tkSemiColon, tkColon,
@@ -210,13 +213,12 @@ func diagOffset*(L: Lexer): int {.inline.} =
 iterator errorsHintsAndWarnings*(L: Lexer, diagOffset = 0): LexerDiag =
   ## iterate over all diagnostics (excluding fatal) from the beginning, or from
   ## the point in time specificed via `diagOffset`
-  if diagOffset < L.diags.len:
-    for d in L.diags[diagOffset..<L.diags.len]:
-      case d.kind
-      of LexDiagsFatal:
-        continue         # fatals are reported via tkError
-      else:
-        yield d
+  for d in L.diags.toOpenArray(diagOffset, L.diags.high):
+    case d.kind
+    of LexDiagsFatal:
+      continue         # fatals are reported via tkError
+    else:
+      yield d
 
 proc getLineInfo*(L: Lexer, tok: Token): TLineInfo {.inline.} =
   result = newLineInfo(L.fileIdx, tok.line, tok.col)
@@ -354,65 +356,69 @@ template eatChar(L: var Lexer, t: var Token) =
   inc(L.bufpos)
 
 
-template handleDiag(L: Lexer, diag: LexerDiagKind): untyped =
+func handleDiag(L: var Lexer, diag: LexerDiagKind, instLoc = instLoc(-1)) =
   doAssert diag notin {lexDiagNameXShouldBeY}
-  {.line.}:
-    L.diags.add LexerDiag(
-                  location: L.getLineInfo, 
-                  instLoc: instLoc(),
-                  kind: diag
-                )
+  L.diags.add LexerDiag(
+                location: L.getLineInfo, 
+                instLoc: instLoc,
+                kind: diag
+              )
 
-template handleDiag(L: Lexer, diag: LexerDiagKind, message: string): untyped =
+func handleDiag(L: var Lexer,
+                diag: LexerDiagKind, 
+                message: string, 
+                instLoc = instLoc(-1)) =
   doAssert diag notin {lexDiagNameXShouldBeY}
-  {.line.}:
-    L.diags.add LexerDiag(
-                  msg: message, 
-                  location: L.getLineInfo, 
-                  instLoc: instLoc(), 
-                  kind: diag
-                )
+  L.diags.add LexerDiag(
+                msg: message, 
+                location: L.getLineInfo, 
+                instLoc: instLoc, 
+                kind: diag
+              )
 
-template handleDiagPos(L: Lexer, diag: LexerDiagKind, pos: int): untyped =
-  {.line.}:
-    L.diags.add LexerDiag(
-                  msg: "",
-                  location: newLineInfo(L.fileIdx, L.lineNumber, pos - L.lineStart),
-                  instLoc: instLoc(),
-                  kind: diag
-                )
+func handleDiagPos(L: var Lexer,
+                   diag: LexerDiagKind,
+                   pos: int,
+                   instLoc = instLoc(-1)) =
+  L.diags.add LexerDiag(
+                msg: "",
+                location: newLineInfo(L.fileIdx,
+                                      L.lineNumber,
+                                      pos - L.lineStart),
+                instLoc: instLoc,
+                kind: diag
+              )
 
-template diagLineTooLong(L: Lexer, pos: int): untyped =
-  {.line.}:
-    L.diags.add LexerDiag(
-                  msg: "",
-                  location: newLineInfo(L.fileIdx,
-                                        L.lineNumber,
-                                        pos - L.lineStart),
-                  instLoc: instLoc(),
-                  kind: lexDiagLineTooLong
-                )
+func diagLineTooLong(L: var Lexer, pos: int, instLoc = instLoc(-1)) =
+  L.diags.add LexerDiag(
+                msg: "",
+                location: newLineInfo(L.fileIdx,
+                                      L.lineNumber,
+                                      pos - L.lineStart),
+                instLoc: instLoc,
+                kind: lexDiagLineTooLong
+              )
 
-template diagLintName(L: Lexer, wantedName, gotName: string): untyped =
-  {.line.}:
-    L.diags.add LexerDiag(
-                  location: L.getLineInfo, 
-                  instLoc: instLoc(), 
-                  kind: lexDiagNameXShouldBeY, 
-                  wanted: wantedName,
-                  got: gotName
-                )
+func diagLintName(L: var Lexer,
+                  wantedName, gotName: string,
+                  instLoc = instLoc(-1)) =
+  L.diags.add LexerDiag(
+                location: L.getLineInfo, 
+                instLoc: instLoc, 
+                kind: lexDiagNameXShouldBeY, 
+                wanted: wantedName,
+                got: gotName
+              )
 
-template internalError(L: Lexer, message: string): untyped =
+func internalError(L: var Lexer, message: string, instLoc = instLoc(-1)) =
   ## Causes an internal error
-  {.line.}:
-    L.diags.add LexerDiag(
-                  msg: message,
-                  location: L.getLineInfo,
-                  instLoc: instLoc(),
-                  kind: lexDiagInternalError
-                )
-    raise (ref LexerError)(diagId: L.diags.high)
+  L.diags.add LexerDiag(
+                msg: message,
+                location: L.getLineInfo,
+                instLoc: instLoc,
+                kind: lexDiagInternalError
+              )
+  raise (ref LexerError)(diagId: L.diags.high)
 
 
 proc getNumber(L: var Lexer, result: var Token) =

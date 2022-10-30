@@ -449,6 +449,50 @@ template localReport*(conf: ConfigRef, report: Report) =
 
 from compiler/ast/lexer import LexerDiag, LexerDiagKind
 
+func lexDiagToLegacyReportKind*(diag: LexerDiagKind): ReportKind {.inline.} =
+  case diag
+  of lexDiagInternalError: rintIce
+  of lexDiagMalformedUnderscores: rlexMalformedUnderscores
+  of lexDiagMalformedTrailingUnderscre: rlexMalformedTrailingUnderscre
+  of lexDiagInvalidToken: rlexInvalidToken
+  of lexDiagNoTabs: rlexNoTabs
+  of lexDiagInvalidIntegerPrefix: rlexInvalidIntegerPrefix
+  of lexDiagInvalidIntegerSuffix: rlexInvalidIntegerSuffix
+  of lexDiagNumberNotInRange: rlexNumberNotInRange
+  of lexDiagExpectedHex: rlexExpectedHex
+  of lexDiagInvalidIntegerLiteral: rlexInvalidIntegerLiteral
+  of lexDiagInvalidCharLiteral: rlexInvalidCharLiteral
+  of lexDiagMissingClosingApostrophe: rlexMissingClosingApostrophe
+  of lexDiagInvalidUnicodeCodepoint: rlexInvalidUnicodeCodepoint
+  of lexDiagUnclosedTripleString: rlexUnclosedTripleString
+  of lexDiagUnclosedSingleString: rlexUnclosedSingleString
+  of lexDiagUnclosedComment: rlexUnclosedComment
+  of lexDiagDeprecatedOctalPrefix: rlexDeprecatedOctalPrefix
+  of lexDiagLineTooLong: rlexLineTooLong
+  of lexDiagNameXShouldBeY: rlexLinterReport
+
+func lexerDiagToLegacyReport*(diag: LexerDiag): Report {.inline.} =
+  let
+    kind = diag.kind.lexDiagToLegacyReportKind()
+    rep =
+      case kind
+      of rlexLinterReport:
+        LexerReport(
+            location: std_options.some diag.location,
+            reportInst: diag.instLoc.toReportLineInfo,
+            msg: diag.msg,
+            kind: kind,
+            wanted: diag.wanted,
+            got: diag.got)
+      else:
+        LexerReport(
+          location: std_options.some diag.location,
+          reportInst: diag.instLoc.toReportLineInfo,
+          msg: diag.msg,
+          kind: kind)
+
+  result = Report(category: repLexer, lexReport: rep)
+
 proc handleReport*(
     conf: ConfigRef,
     diag: LexerDiag,
@@ -457,39 +501,7 @@ proc handleReport*(
   ) {.inline.} =
   # REFACTOR: this is a temporary bridge into existing reporting
 
-  let kind =
-    case diag.kind
-    of lexDiagInternalError: rintIce
-    of lexDiagMalformedUnderscores: rlexMalformedUnderscores
-    of lexDiagMalformedTrailingUnderscre: rlexMalformedTrailingUnderscre
-    of lexDiagInvalidToken: rlexInvalidToken
-    of lexDiagNoTabs: rlexNoTabs
-    of lexDiagInvalidIntegerPrefix: rlexInvalidIntegerPrefix
-    of lexDiagInvalidIntegerSuffix: rlexInvalidIntegerSuffix
-    of lexDiagNumberNotInRange: rlexNumberNotInRange
-    of lexDiagExpectedHex: rlexExpectedHex
-    of lexDiagInvalidIntegerLiteral: rlexInvalidIntegerLiteral
-    of lexDiagInvalidCharLiteral: rlexInvalidCharLiteral
-    of lexDiagMissingClosingApostrophe: rlexMissingClosingApostrophe
-    of lexDiagInvalidUnicodeCodepoint: rlexInvalidUnicodeCodepoint
-    of lexDiagUnclosedTripleString: rlexUnclosedTripleString
-    of lexDiagUnclosedSingleString: rlexUnclosedSingleString
-    of lexDiagUnclosedComment: rlexUnclosedComment
-    of lexDiagDeprecatedOctalPrefix: rlexDeprecatedOctalPrefix
-    of lexDiagLineTooLong: rlexLineTooLong
-    of lexDiagNameXShouldBeY: rlexLinterReport
-
-  var rep = Report(
-    category: repLexer,
-    lexReport: LexerReport(
-      location: std_options.some diag.location,
-      reportInst: diag.instLoc.toReportLineInfo,
-      msg: diag.msg,
-      kind: kind))
-  
-  if kind == rlexLinterReport:
-    rep.lexReport.wanted = diag.wanted
-    rep.lexReport.got = diag.got
+  let rep = diag.lexerDiagToLegacyReport()
 
   handleReport(conf, rep, reportFrom, eh)
 

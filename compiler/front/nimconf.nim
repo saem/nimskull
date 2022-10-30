@@ -33,15 +33,23 @@ import
     idioms,
   ]
 
+# TODO:
+# - DONE: finish mapping the diags enum below
+# - HERE: finish converting this file
+# - then figure out how to make the handler pluggable
 type
-  # TODO:
-  # - DONE: finish mapping the diags enum below
-  # - HERE: finish converting this file
-  # - then figure out how to make the handler pluggable
   ConfigEventKind* = enum
     ## events/errors arising from parsing and processing a compiler config file
 
+    # fatal errors begin
+    cekInternalError
+    # fatal errors end
+
     # users errors begin
+
+    # lexer generated
+    cekLexerErrorDiag        ## lexer error being forwarded
+
     # expected token
     cekParseExpectedX        ## expected some token
     cekParseExpectedCloseX   ## expected closing ')', ']', etc
@@ -50,6 +58,14 @@ type
     # invalid input
     cekInvalidDirective
     # user errors end
+
+    # warning begin
+    cekLexerWarningDiag      ## warning from the lexer
+    # warning end
+
+    # hint begin
+    cekLexerHintDiag         ## hint from the lexer
+    # hint end
 
     # user output start
     cekWriteConfig           ## write out the config
@@ -70,99 +86,29 @@ type
       of cekParseExpectedX, cekParseExpectedCloseX, cekParseExpectedIdent,
          cekInvalidDirective, cekWriteConfig, cekDebugTrace:
         location*: TLineInfo         ## diagnostic location
+      of cekInternalError, cekLexerErrorDiag, cekLexerWarningDiag,
+         cekLexerHintDiag:
+        lexerDiag*: LexerDiag
       of cekDebugReadStart, cekDebugReadStop, cekProgressConfStart:
         discard
     instLoc*: InstantiationInfo ## instantiation in lexer's source
     msg*: string
+  
+  NimConfEvtHandler* = proc(config: ConfigRef,
+                            evt: ConfigFileEvent,
+                            reportFrom: InstantiationInfo,
+                            eh: TErrorHandling = doNothing): void
+
+var
+  cfgEvtHandler: NimConfEvtHandler
+    ## event handler ensure this is set when a public proc that can call the
+    ## `handle*` templates is invoked (take it in as a param). Currently, this
+    ## is only set by `loadConfig`. This allows the module to not depend upon
+    ## `reports` infrastructure which is being refactored/simplified
+  lexDiagOffset = 0
 
 # ---------------- configuration file parser -----------------------------
 # we use Nim's lexer here to save space and work
-
-# xxx: importing `reports`, the whole need to bridge via `handleDiagReport`
-#      it's all terrible. this needs to be further broken up so the lexer just
-#      emits diagnostics and is configured as to how it should handle them as
-#      they arise wrt to aborting, etc
-from compiler/ast/report_enums import ReportKind, ReportCategory
-from compiler/ast/reports import Report, DebugReport, ExternalReport,
-                                 InternalReport, LexerReport, ParserReport,
-                                 toReportLineInfo
-from compiler/front/msgs import handleReport
-import std/options as std_options
-
-proc handleConfigEvent(
-    conf: ConfigRef, 
-    evt: ConfigFileEvent,
-    reportFrom: InstantiationInfo,
-    eh: TErrorHandling = doNothing
-  ) {.inline.} =
-  # REFACTOR: this is a temporary bridge into existing reporting
-
-  let kind =
-    case evt.kind
-    of cekParseExpectedX: rlexExpectedToken
-    of cekParseExpectedCloseX: rlexExpectedToken
-    # xxx: rlexExpectedToken is not a "lexer" error, but a misguided attempt at
-    #      code reuse -- fix after reporting is untangled.
-    of cekParseExpectedIdent: rparIdentExpected
-    of cekInvalidDirective: rlexCfgInvalidDirective
-    of cekWriteConfig: rintNimconfWrite
-    of cekDebugTrace: rdbgCfgTrace
-    of cekDebugReadStart: rdbgStartingConfRead
-    of cekDebugReadStop: rdbgFinishedConfRead
-    of cekProgressConfStart: rextConf
-
-  var rep =
-    case kind
-    of rlexExpectedToken, rlexCfgInvalidDirective:
-      Report(
-        category: repLexer,
-        lexReport: LexerReport(
-          location: std_options.some evt.location,
-          reportInst: evt.instLoc.toReportLineInfo,
-          msg: evt.msg,
-          kind: kind))
-    of rparIdentExpected:
-      Report(
-        category: repParser,
-        parserReport: ParserReport(
-          location: std_options.some evt.location,
-          reportInst: evt.instLoc.toReportLineInfo,
-          msg: evt.msg,
-          kind: kind))
-    of rintNimconfWrite:
-      Report(
-        category: repInternal,
-        internalReport: InternalReport(
-          location: std_options.some evt.location,
-          reportInst: evt.instLoc.toReportLineInfo,
-          msg: evt.msg,
-          kind: kind))
-    of rdbgCfgTrace:
-      Report(
-        category: repDebug,
-        debugReport: DebugReport(
-          location: std_options.some evt.location,
-          reportInst: evt.instLoc.toReportLineInfo,
-          kind: kind,
-          str: evt.msg))
-    of rdbgStartingConfRead, rdbgFinishedConfRead:
-      Report(
-        category: repDebug,
-        debugReport: DebugReport(
-          reportInst: evt.instLoc.toReportLineInfo,
-          kind: kind,
-          filename: evt.msg))
-    of rextConf:
-      Report(
-        category: repExternal,
-        externalReport: ExternalReport(
-          reportInst: evt.instLoc.toReportLineInfo,
-          kind: kind,
-          msg: evt.msg))
-    else:
-      unreachable("totally borked, kind: " & $kind)
-  
-  handleReport(conf, rep, reportFrom, eh)
 
 template handleError(L: Lexer, ev: ConfigEventKind, errMsg: string): untyped =
   {.line.}:
@@ -170,7 +116,8 @@ template handleError(L: Lexer, ev: ConfigEventKind, errMsg: string): untyped =
                             location: L.getLineInfo,
                             instLoc: instLoc(),
                             msg: errMsg)
-    L.config.handleConfigEvent(e, instLoc())
+    cfgEvtHandler(L.config, e, instLoc())
+    # L.config.handleConfigEvent(e, instLoc())
 
 template handleExpectedX(L: Lexer, missing: string): untyped =
   {.line.}:
@@ -178,14 +125,16 @@ template handleExpectedX(L: Lexer, missing: string): untyped =
                             location: L.getLineInfo, 
                             instLoc: instLoc(), 
                             msg: missing)
-    L.config.handleConfigEvent(e, instLoc())
+    cfgEvtHandler(L.config, e, instLoc())
+    # L.config.handleConfigEvent(e, instLoc())
 
 template handleWriteConf(L: Lexer, cfg: string): untyped =
   {.line.}:
     let e = ConfigFileEvent(kind: cekWriteConfig,
                             instLoc: instLoc(),
                             msg: cfg)
-    L.config.handleConfigEvent(e, instLoc())
+    cfgEvtHandler(L.config, e, instLoc())
+    # L.config.handleConfigEvent(e, instLoc())
 
 template handleTrace(L: Lexer, trace: string): untyped =
   {.line.}:
@@ -193,7 +142,8 @@ template handleTrace(L: Lexer, trace: string): untyped =
                             location: L.getLineInfo,
                             instLoc: instLoc(),
                             msg: trace)
-    L.config.handleConfigEvent(e, instLoc())
+    cfgEvtHandler(L.config, e, instLoc())
+    # L.config.handleConfigEvent(e, instLoc())
 
 template handleRead(conf: ConfigRef,
                     evt: range[cekDebugReadStart..cekProgressConfStart],
@@ -202,12 +152,36 @@ template handleRead(conf: ConfigRef,
     let e = ConfigFileEvent(kind: evt,
                             instLoc: instLoc(),
                             msg: filename)
-    conf.handleConfigEvent(e, instLoc())
+    cfgEvtHandler(conf, e, instLoc())
+    # conf.handleConfigEvent(e, instLoc())
 
 proc ppGetTok(L: var Lexer, tok: var Token) =
+  var firstLine = true
+    ## used to force at least one attempt
+
   # simple filter
-  rawGetTok(L, tok)
-  while tok.tokType in {tkComment}: rawGetTok(L, tok)
+  while firstLine or tok.tokType in {tkComment}:
+    firstLine = false # first attempt started, now only comment skipping
+
+    rawGetTok(L, tok)
+
+    if tok.tokType == tkError:
+      let e = ConfigFileEvent(kind: cekInternalError,
+                              lexerDiag: tok.error,
+                              instLoc: tok.error.instLoc)
+      cfgEvtHandler(L.config, e, instLoc(-1), doAbort)
+    
+    for d in L.errorsHintsAndWarnings(lexDiagOffset):
+      {.cast(uncheckedAssign).}:
+        let e = ConfigFileEvent(kind: (case d.kind
+                                      of LexDiagsError:   cekLexerErrorDiag
+                                      of LexDiagsWarning: cekLexerWarningDiag
+                                      of LexDiagsHint:    cekLexerHintDiag
+                                      of LexDiagsFatal:   unreachable()
+                                      ),
+                                lexerDiag: d,
+                                instLoc: d.instLoc)
+      cfgEvtHandler(L.config, e, instLoc(-1), doNothing)
 
 proc parseExpr(L: var Lexer, tok: var Token; config: ConfigRef): bool
 proc parseAtom(L: var Lexer, tok: var Token; config: ConfigRef): bool =
@@ -219,7 +193,6 @@ proc parseAtom(L: var Lexer, tok: var Token; config: ConfigRef): bool =
     else:
       handleError(L, cekParseExpectedCloseX, ")")
       # localReport(L, LexerReport(kind: rlexExpectedToken, msg: ")"))
-
   elif tok.tokType == tkNot:
     ppGetTok(L, tok)
     result = not parseAtom(L, tok, config)
@@ -286,7 +259,6 @@ proc doElif(L: var Lexer, tok: var Token; config: ConfigRef; condStack: var seq[
   var res = evalppIf(L, tok, config)
   if condStack[high(condStack)] or not res:
     jumpToDirective(L, tok, jdElseEndif, config, condStack)
-
   else:
     condStack[high(condStack)] = true
 
@@ -339,7 +311,6 @@ proc parseDirective(L: var Lexer, tok: var Token; config: ConfigRef; condStack: 
     # L.localReport(InternalReport(
     #   kind: rintNimconfWrite,
     #   msg: strtabs.`%`($tok, config.configVars, {useEnvironment, useKey})))
-
     ppGetTok(L, tok)
   else:
     case tok.ident.s.normalize
@@ -384,8 +355,8 @@ proc checkSymbol(L: Lexer, tok: Token) =
     handleError(L, cekParseExpectedIdent, $tok)
     # localReport(L, ParserReport(kind: rparIdentExpected, msg: $tok))
 
-proc parseAssignment(L: var Lexer, tok: var Token;
-                     config: ConfigRef; condStack: var seq[bool]) =
+proc parseAssignment(L: var Lexer, tok: var Token,
+                     config: ConfigRef, condStack: var seq[bool]) =
   if tok.ident != nil:
     if tok.ident.s == "-" or tok.ident.s == "--":
       confTok(L, tok, config, condStack)           # skip unnecessary prefix
@@ -439,8 +410,13 @@ proc parseAssignment(L: var Lexer, tok: var Token;
   else:
     processSwitch(s, val, passPP, info, config)
 
-proc readConfigFile*(filename: AbsoluteFile; cache: IdentCache;
+proc readConfigFile(filename: AbsoluteFile; cache: IdentCache;
                     config: ConfigRef): bool =
+  ## assumes `cfgEvtHandler` has already been set, do not export
+  
+  # reset the diagnostic start for a new config file
+  lexDiagOffset = 0
+
   var
     L: Lexer
     tok: Token
@@ -473,6 +449,13 @@ proc readConfigFile*(filename: AbsoluteFile; cache: IdentCache;
 
     return true
 
+proc readConfigFile*(filename: AbsoluteFile; cache: IdentCache;
+                    config: ConfigRef, evtHandler: NimConfEvtHandler
+  ): bool {.inline.} =
+  # set the event handler so we can report
+  cfgEvtHandler = evtHandler
+  readConfigFile(filename, cache, config)
+
 proc getUserConfigPath*(filename: RelativeFile): AbsoluteFile =
   result = getConfigDir().AbsoluteDir / RelativeDir"nim" / filename
 
@@ -487,9 +470,14 @@ proc getSystemConfigPath*(conf: ConfigRef; filename: RelativeFile): AbsoluteFile
 
 proc loadConfigs*(
     cfg: RelativeFile; cache: IdentCache;
-    conf: ConfigRef; idgen: IdGenerator
+    conf: ConfigRef; idgen: IdGenerator;
+    evtHandler: NimConfEvtHandler
   ) =
+  # set the event handler so we can report
+  cfgEvtHandler = evtHandler
+
   setDefaultLibpath(conf)
+
   proc readConfigFile(path: AbsoluteFile) =
     let configPath = path
     if readConfigFile(configPath, cache, conf):
@@ -501,7 +489,6 @@ proc loadConfigs*(
     if isMain and optWasNimscript in conf.globalOptions:
       if conf.projectIsStdin:
         s = stdin.llStreamOpen
-
       elif conf.projectIsCmd:
         s = llStreamOpen(conf.cmdInput)
 
@@ -512,13 +499,11 @@ proc loadConfigs*(
       conf.configFiles.add(p)
       runNimScript(cache, p, idgen, freshDefines = false, conf, s)
 
-
   if optSkipSystemConfigFile notin conf.globalOptions:
     readConfigFile(getSystemConfigPath(conf, cfg))
 
     if cfg == DefaultConfig:
       runNimScriptIfExists(getSystemConfigPath(conf, DefaultConfigNims))
-
 
   if optSkipUserConfigFile notin conf.globalOptions:
     readConfigFile(getUserConfigPath(cfg))
@@ -531,11 +516,9 @@ proc loadConfigs*(
            else:
              AbsoluteDir(getCurrentDir())
 
-
   if optSkipParentConfigFiles notin conf.globalOptions:
     for dir in parentDirs(pd.string, fromRoot=true, inclusive=false):
       readConfigFile(AbsoluteDir(dir) / cfg)
-
       if cfg == DefaultConfig:
         runNimScriptIfExists(AbsoluteDir(dir) / DefaultConfigNims)
 
@@ -551,17 +534,20 @@ proc loadConfigs*(
         projectConfig = changeFileExt(conf.projectFull, "nim.cfg")
       readConfigFile(projectConfig)
 
-
-  let scriptFile = conf.projectFull.changeFileExt("nims")
-  let scriptIsProj = scriptFile == conf.projectFull
+  let
+    scriptFile = conf.projectFull.changeFileExt("nims")
+    scriptIsProj = scriptFile == conf.projectFull
+  
   template showHintConf =
     for filename in conf.configFiles:
       # delayed to here so that `hintConf` is honored
       conf.handleRead(cekProgressConfStart, filename.string)
       # localReport(conf, ExternalReport(kind: rextConf, msg: filename.string))
+  
   if conf.cmd == cmdNimscript:
     showHintConf()
     conf.configFiles.setLen 0
+  
   if conf.cmd != cmdIdeTools:
     if conf.cmd == cmdNimscript:
       runNimScriptIfExists(conf.projectFull, isMain = true)
@@ -573,4 +559,5 @@ proc loadConfigs*(
     else:
       # 'nimsuggest foo.nims' means to just auto-complete the NimScript file
       discard
+  
   showHintConf()

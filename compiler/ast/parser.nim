@@ -64,7 +64,6 @@ type
     inPragma*: int            ## Pragma level
     inSemiStmtList*: int
     emptyNode: ParsedNode
-    lexDiagOffset: int        ## store where we left off for lexer diag
 
   SymbolMode = enum
     smNormal, smAllowNil, smAfterDot
@@ -105,13 +104,15 @@ proc getTok(p: var Parser) =
   p.lineNumberPrevious = p.lex.lineNumber
   p.lineStartPrevious = p.lex.lineStart
   p.bufposPrevious = p.lex.bufpos
-  p.lexDiagOffset = p.lex.diagOffset
+  
+  let lexDiagOffset = p.lex.diagOffset # capture before using the lexer
+
   p.lex.rawGetTok(p.tok)
 
   if p.tok.tokType == tkError:
     p.lex.config.handleReport(p.tok.error, instLoc(-1), doAbort)
   
-  for d in p.lex.errorsHintsAndWarnings(p.lexDiagOffset):
+  for d in p.lex.errorsHintsAndWarnings(lexDiagOffset):
     p.lex.config.handleReport(d, instLoc(-1))
   
   p.hasProgress = true
