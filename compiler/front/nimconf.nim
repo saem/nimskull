@@ -110,50 +110,44 @@ var
 # ---------------- configuration file parser -----------------------------
 # we use Nim's lexer here to save space and work
 
-template handleError(L: Lexer, ev: ConfigEventKind, errMsg: string): untyped =
-  {.line.}:
+proc handleError(L: Lexer,
+                 ev: range[cekParseExpectedX..cekInvalidDirective],
+                 errMsg: string, 
+                 instLoc = instLoc(-1)) =
     let e = ConfigFileEvent(kind: ev,
                             location: L.getLineInfo,
-                            instLoc: instLoc(),
+                            instLoc: instLoc,
                             msg: errMsg)
-    cfgEvtHandler(L.config, e, instLoc())
-    # L.config.handleConfigEvent(e, instLoc())
+    cfgEvtHandler(L.config, e, instLoc)
 
-template handleExpectedX(L: Lexer, missing: string): untyped =
-  {.line.}:
+proc handleExpectedX(L: Lexer, missing: string, instLoc = instLoc(-1)) =
     let e = ConfigFileEvent(kind: cekParseExpectedX, 
                             location: L.getLineInfo, 
-                            instLoc: instLoc(), 
+                            instLoc: instLoc, 
                             msg: missing)
-    cfgEvtHandler(L.config, e, instLoc())
-    # L.config.handleConfigEvent(e, instLoc())
+    cfgEvtHandler(L.config, e, instLoc)
 
-template handleWriteConf(L: Lexer, cfg: string): untyped =
-  {.line.}:
+proc handleWriteConf(L: Lexer, cfg: string, instLoc = instLoc(-1)) =
     let e = ConfigFileEvent(kind: cekWriteConfig,
-                            instLoc: instLoc(),
+                            instLoc: instLoc,
                             msg: cfg)
-    cfgEvtHandler(L.config, e, instLoc())
-    # L.config.handleConfigEvent(e, instLoc())
+    cfgEvtHandler(L.config, e, instLoc)
 
-template handleTrace(L: Lexer, trace: string): untyped =
-  {.line.}:
+proc handleTrace(L: Lexer, trace: string, instLoc = instLoc(-1)) =
     let e = ConfigFileEvent(kind: cekDebugTrace,
                             location: L.getLineInfo,
-                            instLoc: instLoc(),
+                            instLoc: instLoc,
                             msg: trace)
-    cfgEvtHandler(L.config, e, instLoc())
-    # L.config.handleConfigEvent(e, instLoc())
+    cfgEvtHandler(L.config, e, instLoc)
 
-template handleRead(conf: ConfigRef,
-                    evt: range[cekDebugReadStart..cekProgressConfStart],
-                    filename: string): untyped =
-  {.line.}:
+proc handleRead(conf: ConfigRef,
+                evt: range[cekDebugReadStart..cekProgressConfStart],
+                filename: string,
+                instLoc = instLoc(-1)) =
     let e = ConfigFileEvent(kind: evt,
-                            instLoc: instLoc(),
+                            instLoc: instLoc,
                             msg: filename)
-    cfgEvtHandler(conf, e, instLoc())
-    # conf.handleConfigEvent(e, instLoc())
+    cfgEvtHandler(conf, e, instLoc)
 
 proc ppGetTok(L: var Lexer, tok: var Token) =
   var firstLine = true
