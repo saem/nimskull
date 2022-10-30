@@ -59,22 +59,6 @@ type
     rsevTrace = "Trace" ## Additional information about compiler actions -
     ## external commands mostly.
 
-<<<<<<< HEAD
-  ReportContextKind* = enum
-    sckInstantiationOf
-    sckInstantiationFrom
-
-  ReportContext* = object
-    location*: TLineInfo ## Report context instantiation
-    case kind*: ReportContextKind
-      of sckInstantiationOf:
-        entry*: PSym ## Instantiated entry symbol
-
-      of sckInstantiationFrom:
-        discard
-
-=======
->>>>>>> 6919ad44e (context is not on sem and vm only)
   ReportBase* = object of RootObj
     location*: Option[TLineInfo] ## Location associated with report. Some
     ## reports do not have any locations associated with them (most (but
