@@ -15,8 +15,9 @@ proc semDiscard(c: PContext, n: PNode): PNode =
   checkSonsLen(n, 1, c.config)
   if n[0].kind != nkEmpty:
     n[0] = semExprWithType(c, n[0])
-    let sonType = n[0].typ
-    let sonKind = n[0].kind
+    let
+      sonType = n[0].typ
+      sonKind = n[0].kind
     if isEmptyType(sonType) or sonType.kind in {tyNone, tyTypeDesc} or sonKind == nkTypeOfExpr:
       localReport(c.config, n, reportSem rsemDiscardingVoid)
     if sonType.kind == tyProc and sonKind notin nkCallKinds:
@@ -29,12 +30,11 @@ proc semBreakOrContinue(c: PContext, n: PNode): PNode =
   if n[0].kind != nkEmpty:
     if n.kind != nkContinueStmt:
       var s: PSym
-      case n[0].kind:
-        of nkIdent: s = lookUp(c, n[0])
-        of nkSym: s = n[0].sym
-        else:
-          semReportIllformedAst(c.config, n, {nkIdent, nkSym})
-
+      case n[0].kind
+      of nkIdent: s = lookUp(c, n[0])
+      of nkSym: s = n[0].sym
+      else:
+        semReportIllformedAst(c.config, n, {nkIdent, nkSym})
       s = getGenSym(c, s)
       if s.kind == skLabel and s.owner.id == c.p.owner.id:
         var x = newSymNode(s)
@@ -44,12 +44,10 @@ proc semBreakOrContinue(c: PContext, n: PNode): PNode =
         suggestSym(c.graph, x.info, s, c.graph.usageSym)
       else:
         localReport(c.config, n.info, reportSym(rsemInvalidControlFlow, s))
-
     else:
       localReport(c.config, n, reportSem rsemContinueCannotHaveLabel)
   elif (c.p.nestedLoopCounter <= 0) and
        ((c.p.nestedBlockCounter <= 0) or n.kind == nkContinueStmt):
-
     localReport(c.config, n, reportSem rsemInvalidControlFlow)
 
 proc semAsm(c: PContext, n: PNode): PNode =
@@ -97,7 +95,6 @@ proc fixNilType(c: PContext; n: PNode) =
     n.transitionSonsKind(nkStmtList)
     for it in n:
       fixNilType(c, it)
-
   n.typ = nil
 
 # start `discard` check related code
@@ -122,7 +119,6 @@ proc discardCheck(c: PContext, n: PNode, flags: TExprFlags): PNode =
       var m = n
       while m.kind in skipForDiscardable:
         m = m.lastSon
-
       result = newError(c.config, n,
         PAstDiag(kind: adSemUseOrDiscardExpr, undiscarded: m))
 
@@ -130,9 +126,10 @@ proc discardCheck(c: PContext, n: PNode, flags: TExprFlags): PNode =
 
 proc semIf(c: PContext, n: PNode; flags: TExprFlags): PNode =
   result = n
-  var typ = commonTypeBegin
-  var hasElse = false
-  var hasError = false
+  var
+    typ = commonTypeBegin
+    hasElse = false
+    hasError = false
   for i in 0..<n.len:
     var it = n[i]
     if it.len == 2:
@@ -156,7 +153,6 @@ proc semIf(c: PContext, n: PNode; flags: TExprFlags): PNode =
 
   if hasError:
     result = c.config.wrapError(result)
-
   elif isEmptyType(typ) or typ.kind in {tyNil, tyUntyped} or
       (not hasElse and efInTypeof notin flags):
     for it in n:
@@ -222,11 +218,9 @@ proc semTry(c: PContext, n: PNode; flags: TExprFlags): PNode =
         addDecl(c, symbol)
         # Overwrite symbol in AST with the symbol in the symbol table.
         a[0][2] = newSymNode(symbol, a[0][2].info)
-
       elif a.len == 1:
         # count number of ``except: body`` blocks
         inc catchAllExcepts
-
       else:
         # support ``except KeyError, ValueError, ... : body``
         if catchAllExcepts > 0:
@@ -242,11 +236,9 @@ proc semTry(c: PContext, n: PNode; flags: TExprFlags): PNode =
         if isNative and isImported:
           localReport(c.config, a[0].info, reportAst(
             rsemCannotExceptNativeAndImported, a))
-
     elif a.kind == nkFinally:
       if i != n.len - 1:
         localReport(c.config, a, reportSem rsemExpectedSingleFinally)
-
     else:
       semReportIllformedAst(c.config, n, "?")
 
@@ -362,7 +354,6 @@ proc checkNilableOrError(c: PContext; def: PNode): PNode =
     if {sfGlobal, sfImportc} * v.flags == {sfGlobal} and v.typ.requiresInit:
       if v.astdef.isNil:
         result = c.config.newError(def, PAstDiag(kind: adSemProveInit, unproven: v))
-
       elif tfNotNil in v.typ.flags and
           not v.astdef.typ.isNil and
           tfNotNil notin v.astdef.typ.flags:
@@ -375,13 +366,10 @@ proc checkNilable(c: PContext; v: PSym) =
   if {sfGlobal, sfImportc} * v.flags == {sfGlobal} and v.typ.requiresInit:
     if v.astdef.isNil:
       localReport(c.config, v.info, reportSym(rsemProveInit, v))
-
     elif tfNotNil in v.typ.flags and
          not v.astdef.typ.isNil and
          tfNotNil notin v.astdef.typ.flags:
       localReport(c.config, v.info, reportSym(rsemProveInit, v))
-
-#include liftdestructors
 
 proc addToVarSection(c: PContext; result: PNode; orig, identDefs: PNode) =
   if result.kind == nkStmtList:
@@ -696,11 +684,11 @@ proc semNormalizedLetOrVar(c: PContext, n: PNode, symkind: TSymKind): PNode =
     else:
       def = fitNodeConsiderViewType(c, givenTyp, initExpr, initExpr.info)
       typ = givenTyp
-  
+
   elif haveGivenTyp and not haveInit: # eg: var foo: int
     def = initExpr  # will be nkEmpty or nkError
     typ = givenTyp
-  
+
   elif not haveGivenTyp and haveInit: # eg: var foo = 1
     def = initExpr
     typ = initType.skipTypes({tyStatic, tySink}).skipIntLit(c.idgen)
@@ -719,7 +707,7 @@ proc semNormalizedLetOrVar(c: PContext, n: PNode, symkind: TSymKind): PNode =
         newTypeError(typ, nextTypeId(c.idgen)):
           c.config.newError(def, PAstDiag(kind: adSemProcHasNoConcreteType,
                                           wrongType: typ))
-  
+
   else:                               # eg: var foo <-- lol, no
     # xxx: should we error out here or report it later, might recover via
     #      macros/template pragmas: `var foo {.mymacro.}` generating a proper
@@ -1650,10 +1638,11 @@ proc semCase(c: PContext, n: PNode; flags: TExprFlags): PNode =
   openScope(c)
   pushCaseContext(c, n)
   n[0] = semExprWithType(c, n[0])
-  var chckCovered = false
-  var covered: Int128 = toInt128(0)
-  var typ = commonTypeBegin
-  var hasElse = false
+  var
+    chckCovered = false
+    covered: Int128 = toInt128(0)
+    typ = commonTypeBegin
+    hasElse = false
   let caseTyp = skipTypes(n[0].typ, abstractVar-{tyTypeDesc})
   const shouldChckCovered = {tyInt..tyInt64, tyChar, tyEnum, tyUInt..tyUInt32, tyBool}
   case caseTyp.kind
@@ -1710,7 +1699,6 @@ proc semCase(c: PContext, n: PNode; flags: TExprFlags): PNode =
       localReport(c.config, n, SemReport(
         kind: rsemMissingCaseBranches,
         nodes: formatMissingBranches(c, n)))
-
     else:
       localReport(c.config, n, reportSem rsemMissingCaseBranches)
 
@@ -1784,7 +1772,6 @@ proc typeDefLeftSidePass(c: PContext, typeSection: PNode, i: int) =
     if pkg.isNil or pkg.kind != skPackage:
       localReport(c.config, name.info, reportStr(
         rsemUnknownPackageName, pkgName.s))
-
     else:
       let typsym = c.graph.packageTypes.strTableGet(typName)
       if typsym.isNil:
@@ -1836,7 +1823,6 @@ proc typeDefLeftSidePass(c: PContext, typeSection: PNode, i: int) =
     # add it here, so that recursive types are possible:
     if sfGenSym notin s.flags:
       addInterfaceDecl(c, s)
-
     elif s.owner == nil:
       s.owner = getCurrOwner(c)
 
@@ -1886,10 +1872,8 @@ proc checkCovariantParamsUsages(c: PContext; genericType: PType) =
       if result:
         c.config.localReport(genericType.sym.info, reportTyp(
           rsemExpectedInvariantParam, t))
-
     of tySequence:
       return traverseSubTypes(c, t[0])
-
     of tyGenericInvocation:
       let targetBody = t[0]
       for i in 1..<t.len:
@@ -1900,7 +1884,6 @@ proc checkCovariantParamsUsages(c: PContext; genericType: PType) =
             if tfCovariant notin formalFlags:
               c.config.localReport(genericType.sym.info, reportSym(
                 rsemCovariantUsedAsNonCovariant, param.sym))
-
             elif tfWeakCovariant in formalFlags:
               param.flags.incl tfWeakCovariant
             result = true
@@ -1916,24 +1899,19 @@ proc checkCovariantParamsUsages(c: PContext; genericType: PType) =
     of tyAnd, tyOr, tyNot, tyStatic, tyBuiltInTypeClass, tyCompositeTypeClass:
       c.config.localReport(genericType.sym.info, reportTyp(
         rsemNonInvariantCannotBeUsedWith, t))
-
     of tyUserTypeClass, tyUserTypeClassInst:
       c.config.localReport(genericType.sym.info, reportTyp(
         rsemNonInvariantCnnnotBeUsedInConcepts, t))
-
     of tyTuple:
       for fieldType in t.sons:
         subresult traverseSubTypes(c, fieldType)
     of tyPtr, tyRef, tyVar, tyLent:
       if t.base.kind == tyGenericParam: return true
       return traverseSubTypes(c, t.base)
-
     of tyDistinct, tyAlias, tySink:
       return traverseSubTypes(c, t.lastSon)
-
     of tyGenericInst:
       internalError(c.config, "???")
-
     else:
       discard
   discard traverseSubTypes(c, body)
@@ -2038,17 +2016,18 @@ proc typeSectionRightSidePass(c: PContext, n: PNode) =
       c.config.internalAssert st.kind in {tyPtr, tyRef}
       c.config.internalAssert st.lastSon.sym == nil
       incl st.flags, tfRefsAnonObj
-      let obj = newSym(skType, getIdent(c.cache, s.name.s & ":ObjectType"),
-                       nextSymId c.idgen, getCurrOwner(c), s.info)
-      let symNode = newSymNode(obj)
+      let
+        obj = newSym(skType, getIdent(c.cache, s.name.s & ":ObjectType"),
+                     nextSymId c.idgen, getCurrOwner(c), s.info)
+        symNode = newSymNode(obj)
       obj.ast = a.shallowCopy
       case a[0].kind
-        of nkSym: obj.ast[0] = symNode
-        of nkPragmaExpr:
-          obj.ast[0] = a[0].shallowCopy
-          obj.ast[0][0] = symNode
-          obj.ast[0][1] = a[0][1]
-        else: assert(false)
+      of nkSym: obj.ast[0] = symNode
+      of nkPragmaExpr:
+        obj.ast[0] = a[0].shallowCopy
+        obj.ast[0][0] = symNode
+        obj.ast[0][1] = a[0][1]
+      else: assert(false)
       obj.ast[1] = a[1]
       obj.ast[2] = a[2][0]
       if sfPure in s.flags:
@@ -2062,7 +2041,6 @@ proc checkForMetaFields(c: PContext; n: PNode) =
       if t.kind == tyBuiltInTypeClass and t.len == 1 and t[0].kind == tyProc:
         localReport(c.config, n.info, reportTyp(
           rsemProcIsNotAConcreteType, t))
-
       else:
         localReport(c.config, n.info, reportTyp(
           rsemTIsNotAConcreteType, t))
@@ -2125,9 +2103,6 @@ proc typeSectionFinalPass(c: PContext, n: PNode) =
         if s.typ.kind in {tyEnum, tyRef, tyObject} and not isTopLevel(c):
           incl(s.flags, sfGenSym)
 
-  #instAllTypeBoundOp(c, n.info)
-
-
 proc semAllTypeSections(c: PContext; n: PNode): PNode =
   proc gatherStmts(c: PContext; n: PNode; result: PNode) {.nimcall.} =
     case n.kind
@@ -2139,7 +2114,6 @@ proc semAllTypeSections(c: PContext; n: PNode): PNode =
             localReport(c.config, n.info, reportAst(
               rsemRecursiveImport, n,
               str = toMsgFilename(c.config, f)))
-
           else:
             let code = c.graph.includeFileCallback(c.graph, c.module, f)
             gatherStmts c, code, result
@@ -2198,7 +2172,6 @@ proc addParams(c: PContext, n: PNode, kind: TSymKind) =
   for i in 1..<n.len:
     if n[i].kind == nkSym:
       addParamOrResult(c, n[i].sym, kind)
-
     else:
       semReportIllformedAst(c.config, n[i], {nkSym})
 
@@ -2362,19 +2335,6 @@ proc semInferredLambda(c: PContext, pt: TIdTable, n: PNode): PNode {.nosinks.} =
   # result = inferred.ast
   # result.kind = arg.kind
 
-proc activate(c: PContext, n: PNode) =
-  # XXX: This proc is part of my plan for getting rid of
-  # forward declarations. stay tuned.
-  when false:
-    # well for now it breaks code ...
-    case n.kind
-    of nkLambdaKinds:
-      discard semLambda(c, n, {})
-    of nkCallKinds:
-      for i in 1..<n.len: activate(c, n[i])
-    else:
-      discard
-
 proc maybeAddResult(c: PContext, s: PSym, n: PNode) =
   if s.kind == skMacro:
     let resultType = sysTypeFromName(c.graph, n.info, "NimNode")
@@ -2392,7 +2352,6 @@ proc prevDestructor(c: PContext; prevOp: PSym; obj: PType; info: TLineInfo) =
   if sfOverriden notin prevOp.flags:
     localReport(c.config, info, reportSym(
       rsemRebidingImplicitDestructor, prevOp, typ = obj))
-
   else:
     localReport(c.config, info, reportSym(
       rsemRebidingDestructor, prevOp, typ = obj))
@@ -2465,14 +2424,12 @@ proc semOverride(c: PContext, s: PSym, n: PNode) =
           setAttachedOp(c.graph, c.module.position, t, attachedDeepCopy, s)
         else:
           localReport(c.config, n.info, reportTyp(rsemRebidingDeepCopy, t))
-
       else:
           localReport(c.config, n.info, reportTyp(rsemRebidingDeepCopy, t))
 
       if t.owner.getModule != s.getModule:
         localReport(c.config, n.info, reportTyp(
           rsemInseparableTypeBoundOp, t, sym = s))
-
     else:
       localReport(c.config, n.info, reportSym(
         rsemUnexpectedTypeBoundOpSignature, s))
@@ -2488,10 +2445,8 @@ proc semOverride(c: PContext, s: PSym, n: PNode) =
         incl(obj.flags, tfHasAsgn)
         if obj.kind == tyGenericBody:
           obj = obj.lastSon
-
         elif obj.kind == tyGenericInvocation:
           obj = obj[0]
-
         else:
           break
       var objB = t[2]
@@ -2520,7 +2475,6 @@ proc semOverride(c: PContext, s: PSym, n: PNode) =
     if sfSystemModule notin s.owner.flags:
       localReport(c.config, n.info, reportSym(
         rsemUnexpectedTypeBoundOpSignature, s))
-
   of "=trace":
     if s.magic != mTrace:
       bindTypeHook(c, s, n, attachedTrace)
@@ -2769,7 +2723,6 @@ proc semProcAux(c: PContext, n: PNode, kind: TSymKind,
       if s.name.s in [".", ".()", ".="] and {Feature.destructor, dotOperators} * c.features == {}:
         localReport(c.config, n.info, reportSym(
           rsemEnableDotOperatorsExperimental, s))
-
       elif s.name.s == "()" and callOperator notin c.features:
         localReport(c.config, n.info, reportSym(
           rsemEnableCallOperatorExperimental, s))
@@ -2946,9 +2899,10 @@ proc semMacroDef(c: PContext, n: PNode): PNode =
   # nkIteratorDef aynmore, return. The iterator then might have been
   # sem'checked already. (Or not, if the macro skips it.)
   if result.kind != nkMacroDef: return
-  var s = result[namePos].sym
-  var t = s.typ
-  var allUntyped = true
+  var
+    s = result[namePos].sym
+    t = s.typ
+    allUntyped = true
   for i in 1..<t.n.len:
     let param = t.n[i].sym
     if param.typ.kind != tyUntyped: allUntyped = false
@@ -2965,11 +2919,9 @@ proc incMod(c: PContext, n: PNode, it: PNode, includeStmtResult: PNode) =
     if containsOrIncl(c.includedFiles, f.int):
       localReport(c.config, n.info, reportStr(
         rsemRecursiveInclude, toMsgFilename(c.config, f)))
-
     else:
       includeStmtResult.add semStmt(
         c, c.graph.includeFileCallback(c.graph, c.module, f), {})
-
       excl(c.includedFiles, f.int)
 
 proc evalInclude(c: PContext, n: PNode): PNode =
@@ -3106,8 +3058,6 @@ proc semPragmaBlock(c: PContext, n: PNode): PNode =
     result = result[1] # unwrap the block
 
 proc semStaticStmt(c: PContext, n: PNode): PNode =
-  #echo "semStaticStmt"
-  #writeStackTrace()
   inc c.inStaticContext
   openScope(c)
   let a = semStmt(c, n[0], {})
@@ -3291,8 +3241,9 @@ proc semStmtList(c: PContext, n: PNode, flags: TExprFlags): PNode =
     result = wrapError(c.config, result)
 
 proc semStmt(c: PContext, n: PNode; flags: TExprFlags): PNode =
-  if efInTypeof in flags:
-    result = semExpr(c, n, flags)
-  else:
-    result = semExprNoType(c, n)
+  result =
+    if efInTypeof in flags:
+      semExpr(c, n, flags)
+    else:
+      semExprNoType(c, n)
 

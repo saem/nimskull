@@ -1166,7 +1166,6 @@ proc afterCallActions(c: PContext; n: PNode, flags: TExprFlags): PNode =
   of skTemplate: result = semTemplateExpr(c, result, callee, flags)
   else:
     semFinishOperands(c, result)
-    activate(c, result)
     result = fixAbstractType(c, result)
     result = fixVarArgumentsAndAnalyse(c, result)
     if callee.magic != mNone:
@@ -2693,7 +2692,6 @@ proc semMagic(c: PContext, n: PNode, s: PSym, flags: TExprFlags): PNode =
       let callee = result[0].sym
       if callee.magic == mNone:
         semFinishOperands(c, result)
-      activate(c, result)
       result = fixAbstractType(c, result)
       result = fixVarArgumentsAndAnalyse(c, result)
       if callee.magic != mNone:
