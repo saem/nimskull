@@ -1204,6 +1204,10 @@ type
     adSemFoldDivByZero      # xxx: remove 'Fold' from name?
     adSemInvalidRangeConversion
     adSemFoldCannotComputeOffset
+    adSemCompilerOptionInvalid
+    adSemCompilerOptionArgInvalid
+    adSemDeprecatedCompilerOpt      # warning promoted to error
+    adSemDeprecatedCompilerOptArg   # warning promoted to error
 
   PAstDiag* = ref TAstDiag
   TAstDiag* {.acyclic.} = object
@@ -1474,6 +1478,15 @@ type
     of adSemInvalidIntDefine,
         adSemInvalidBoolDefine:
       invalidDef*: string
+    of adSemCompilerOptionInvalid,
+        adSemDeprecatedCompilerOpt:
+      badCompilerOpt*: PNode
+    of adSemDeprecatedCompilerOptArg:
+      compilerOpt*: PNode
+      compilerOptArg*: PNode
+    of adSemCompilerOptionArgInvalid:
+      forCompilerOpt*: PNode
+      badCompilerOptArg*: PNode
     of adSemDefNameSym:
       defNameSym*: PSym
       defNameSymData*: AdSemDefNameSym

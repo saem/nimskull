@@ -62,9 +62,9 @@ type
     optSourcemap
     optProfileVM              ## enable VM profiler
     optEnableDeepCopy         ## ORC specific: enable 'deepcopy' for all types
+    optCmdExitGcStats         ## print gc stats as part of command exit
 
   TGlobalOptions* = set[TGlobalOption]
-
 
   TGCMode* = enum             # the selected GC
     gcUnselected = "unselected"
@@ -82,8 +82,6 @@ type
     # usesWriteBarrier() is concerned
 
   TOption* = enum
-    ##
-
     # please make sure we have under 32 options (improves code efficiency
     # a lot!) **keep binary compatible**.
     optNone
@@ -123,15 +121,6 @@ type
 
   TOptions* = set[TOption]
 
-  TBackend* = enum
-    ## Target compilation backend
-    backendInvalid = "" # for parseEnum
-    backendC = "c"
-    backendJs = "js"
-    backendNimVm = "vm"
-    # backendNimscript = "nimscript" # this could actually work
-    # backendLlvm = "llvm" # probably not well supported; was cmdCompileToLLVM
-
   Command* = enum
     ## Compiler execution command
     cmdNone        ## not yet processed command
@@ -160,7 +149,15 @@ type
     cmdNop
     cmdJsonscript  ## compile a .json build file
     cmdNimfix
-    # old unused: cmdInterpret, cmdDef: def feature (find definition for IDEs)
+
+  CanonicalDiagnostic* = enum
+    ## canonical list of diagnostic kinds, these serve as a sort of "base type"
+    ## for very specific diagnostic kinds that various parts of the compiler
+    ## may generate. This way subsystems can issue very specific kinds for fine
+    ## grain control, while allowing humans to reason about them broadly. A
+    ## specific diagnostic must be associated with one and only one canonical
+    ## diagnostic.
+    diagDeprecated = "deprecated"
 
   FilenameOption* = enum
     ## Filename formatting option
@@ -170,20 +167,6 @@ type
     foLegacyRelProj ## legacy, shortest of (foAbs, foRelProject)
     foName          ## lastPathPart, e.g.: foo.nim
     foStacktrace    ## if optExcessiveStackTrace: foAbs else: foName
-
-  Feature* = enum  ## experimental features; DO NOT RENAME THESE!
-    implicitDeref,
-    dotOperators,
-    callOperator,
-    destructor,
-    notnil,
-    vmopsDanger,
-    strictFuncs,
-    views,
-    strictNotNil,
-    overloadableEnums,
-    strictEffects,
-    unicodeOperators
 
   TSystemCC* = enum
     ccNone, ccGcc, ccNintendoSwitch, ccLLVM_Gcc, ccCLang, ccBcc, ccVcc,
@@ -202,6 +185,43 @@ type
     readOnlySf   ## we only read from rod files
     v2Sf         ## who knows, probably a bad idea
     stressTest   ## likely more bad ideas
+
+type
+  # "reports" strikes again, this bit of silliness is to stop reports from
+  # infecting the `commands` module among others.
+  MsgFormatKind* = enum
+    msgFormatText  ## text legacy reports message formatting
+    msgFormatSexp  ## sexp legacy reports message formatting
+
+type
+  Feature* = enum  ## experimental features; DO NOT RENAME THESE!
+    implicitDeref,
+    dotOperators,
+    callOperator,
+    destructor,
+    notnil,
+    vmopsDanger,
+    strictFuncs,
+    views,
+    strictNotNil,
+    overloadableEnums,
+    strictEffects,
+    unicodeOperators
+
+const experimentalFeatures*: set[Feature] = {implicitDeref..unicodeOperators}
+
+type
+  TBackend* = enum
+    ## Target compilation backend
+    backendInvalid = "" # for parseEnum
+    backendC = "c"
+    backendJs = "js"
+    backendNimVm = "vm"
+    # backendNimscript = "nimscript" # this could actually work
+    # backendLlvm = "llvm" # probably not well supported; was cmdCompileToLLVM
+  TValidBackend* = range[backendC .. backendJs]
+
+const validBackends*: set[TValidBackend] = {backendC .. backendJs}
 
 type
   ConfNoteSet* = enum

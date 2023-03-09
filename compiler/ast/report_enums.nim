@@ -33,8 +33,8 @@ type
 
     repBackend = "Backend" ## Backend-specific reports.
 
-    repExternal = "External" ## Report constructed during handling of the
-    ## external configuration, command-line flags, packages, modules.
+    repExternal = "External" ## Report constructed during handling of
+                             ## configuration, packages, modules.
 
 
   # TODO: "severity" in such a general fashion barely makes sense. Since
@@ -87,7 +87,6 @@ type
 
     # errors being
     rintCannotOpenFile
-    rintUsingLeanCompiler
     rintNotUsingNimcore
     rintNotImplemented
     # errors END. !! add reports BEFORE the last enum !!
@@ -106,13 +105,13 @@ type
     rintErrKind = "ErrKind" ## Show report kind in error messages
                             # REFACTOR this is a global option not a hint
 
-    rintGCStats = "GCStats" ## Print GC statistics for the compiler run
     rintQuitCalled = "QuitCalled" ## `quit()` called by the macro code
     ## compilation error handling and similar
     rintMissingStackTrace ## Stack trace would've been generated in the
     ## debug compiler build
 
-    rintSuccessX = "SuccessX" ## Succesfull compilation
+    rintSuccessX = "SuccessX" ## Successful compilation, only used as a "note",
+                              ## it's not a hint either
     # hints END !! add reports BEFORE the last enum !!
 
     rintStackTrace = "StackTrace" ## Stack trace during internal
@@ -120,12 +119,6 @@ type
     rintListWarnings
     rintListHints
 
-    rintCliHelp # cli report first!
-    rintCliFullHelp
-    rintCliVersion
-    rintCliAdvancedUsage # cli report last!
-
-    rintDumpState
     rintEchoMessage # last !
 
     # internal reports END !! add reports BEFORE the last enum !!
@@ -135,32 +128,28 @@ type
     # errors begin
     rextUnknownCCompiler
 
-    # malformed cmdline parameters begin
+    rextCmdRequiresFile ## fatal error, user failed to provide a file
+
+    # malformed script config parameters begin
     rextInvalidHint
     rextInvalidWarning
-    rextInvalidCommandLineOption ## Invalid command-line option passed to
+    rextCfgInvalidOption ## Invalid config option passed to
                                  ## the compiler
     rextOnlyAllOffSupported ## Only `all:off` is supported for mass
     ## hint/warning modification. Separate diagnostics must be enabled on
     ## one-by-one basis.
-    rextExpectedOnOrOff ## Command-line option expected 'on' or 'off' value
-    rextExpectedOnOrOffOrList ## Command-line option expected 'on', 'off'
+    rextExpectedOnOrOff ## config option expected 'on' or 'off' value
+    rextCfgExpectedOnOffOrList ## config option expected 'on', 'off'
     ## or 'list' value.
-    rextExpectedCmdArgument ## Command-line option expected argument
-    rextExpectedNoCmdArgument ## Command-line option expected no arguments
-    rextCmdDisallowsAdditionalArguments ## command disallows additional args
-    rextInvalidNumber ## Command-line switch expected a number
-    rextInvalidValue
-    rextUnexpectedValue ## Command-line argument had value, but it did not
-    ## match with any expected.
+    rextCfgExpectedArgument ## config option expected argument
+    rextCfgExpectedNoArgument ## config option expected no arguments
+    rextCfgArgMalformedKeyValPair
+    rextCfgArgExpectedValueFromList
+    rextCfgArgUnexpectedValue
+    rextCfgArgUnknownExperimentalFeature
 
-    rextExpectedCbackendForRun
-    rextExpectedTinyCForRun
-    rextInvalidCommand
     rextCommandMissing
-    rextExpectedRunOptForArgs
-    rextUnexpectedRunOpt
-    rextInvalidPath ## Invalid path for a command-line argument
+    rextInvalidPath ## Invalid path for a config option
 
     rextInvalidPackageName ## When adding packages from the `--nimbleDir`
     ## (or it's default value), names are validated. This error is
@@ -168,9 +157,7 @@ type
     # errors END !! add reports BEFORE the last enum !!
 
     # warnings begin
-    rextDeprecated ## Report about use of the deprecated feature that is
-    ## not in the semantic pass. Things like deprecated flags, compiler
-    ## commands and so on.
+    rextCfgArgDeprecatedNoop ## deprecated 
     # warnings end
 
     # hints start
@@ -768,6 +755,9 @@ type
     rsemLinePragmaExpectsTuple
     rsemRaisesPragmaExpectsObject
 
+    rsemCompilerOptionInvalid
+    rsemCompilerOptionArgInvalid
+
     # -- locking
     rsemLocksPragmaExpectsList
     rsemLocksPragmaBadLevel
@@ -791,12 +781,14 @@ type
     # END !! add reports BEFORE the last enum !!
 
     # Semantic warnings begin
-    rsemUserWarning            = "User" ## `{.warning: }`
-    rsemUnknownMagic           = "UnknownMagic"
-    rsemUnusedImport           = "UnusedImport"
-    rsemDeprecated             = "Deprecated"
-    rsemLockLevelMismatch      = "LockLevel"
-    rsemTypelessParam          = "TypelessParam"
+    rsemUserWarning              = "User" ## `{.warning: }`
+    rsemUnknownMagic             = "UnknownMagic"
+    rsemUnusedImport             = "UnusedImport"
+    rsemDeprecated               = "Deprecated"
+    rsemDeprecatedCompilerOpt    = "Deprecated"
+    rsemDeprecatedCompilerOptArg = "Deprecated"
+    rsemLockLevelMismatch        = "LockLevel"
+    rsemTypelessParam            = "TypelessParam"
     rsemOwnedTypeDeprecated
 
     rsemWarnUnlistedRaises = "Effect" ## `sempass2.checkRaisesSpec` had
@@ -843,7 +835,7 @@ type
     rsemUserHint = "User" ## `{.hint: .}` pragma encountereed
     rsemLinterReport  = "Name"
     rsemLinterReportUse = "Name"
-    rsemHintLibDependency
+    rsemHintLibDependency = "Dependency"
     rsemXDeclaredButNotUsed = "XDeclaredButNotUsed"
     rsemDuplicateModuleImport = "DuplicateModuleImport"
     rsemXCannotRaiseY = "XCannotRaiseY"
@@ -891,7 +883,7 @@ type
     rcmdCompiling = "CC"
     rcmdLinking = "Link"
     rcmdExecuting = "Exec"
-    rcmdRunnableExamplesSuccess
+    rcmdRunnableExamplesSuccess = "Success"
     # hints END !! add reports BEFORE the last enum !!
 
     #----------------------------  Trace reports  ----------------------------#
@@ -1042,7 +1034,7 @@ const
   #------------------------------  external  -------------------------------#
   repExternalKinds* = {low(ExternalReportKind) .. high(ExternalReportKind)}
   rextErrorKinds* = {rextUnknownCCompiler .. rextInvalidPackageName}
-  rextWarningKinds* = {rextDeprecated}
+  rextWarningKinds* = {rextCfgArgDeprecatedNoop}
   rextHintKinds* = {rextConf .. rextPath}
 
 
@@ -1056,7 +1048,6 @@ const
   rintWarningKinds* = {rintWarnCannotOpenFile .. rintWarnFileChanged}
   rintHintKinds* = {rintSource .. rintSuccessX}
   rintDataPassKinds* = {rintStackTrace .. rintEchoMessage}
-  rintCliKinds* = {rintCliHelp .. rintCliAdvancedUsage}
 
 
 const

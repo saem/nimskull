@@ -46,7 +46,6 @@ import
     reports_external,
   ],
   compiler/utils/[
-    platform,
     nversion,
     astrepr,
     idioms
@@ -63,7 +62,8 @@ import
 
 import compiler/front/options as compiler_options
 from compiler/ast/reports_base_sem import ReportContext, ReportContextKind
-
+from compiler/ast/ast_query import getStr
+from compiler/front/optionprocessor import allowedCompileOptionArgs
 
 func assertKind(r: ReportTypes | Report) = assert r.kind != repNone
 
@@ -94,7 +94,7 @@ func wrap*(
     color: ForegroundColor,
     style: set[Style] = {}
   ): string =
-  ## Optionally wrap text in ansi color formatting, of `conf` has coloring
+  ## Optionally wrap text in ansi color formatting, if `conf` has coloring
   ## enabled
   if conf.useColor:
     wrap(str, color, style)
@@ -523,7 +523,6 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
          r.typ.kind == tyProc:
         result.add(" = ", typeToString(r.typ, preferDesc))
 
-
     of rsemExpandArc:
       result.add(
         "--expandArc: ",
@@ -613,8 +612,6 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
             result.addf("$1; $2 is deprecated", s.constraint.strVal, s.name.s)
           else:
             result.add(s.name.s, " is deprecated")
-
-
 
     of rsemThisPragmaRequires01Args:
       # FIXME remove this report kind, reuse "wrong number of arguments"
@@ -719,7 +716,6 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
         args.add(typeToString(r.ast[i].typ))
       args.add(")")
 
-
       result = "ambiguous call; both $1 and $2 match for: $3" % [
         getProcHeader(conf, r.symbols[0]),
         getProcHeader(conf, r.symbols[1]),
@@ -777,10 +773,8 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
     of rsemTypeExpected:
       if r.sym.isNil:
         result = "type expected, but expression has no type"
-
       elif r.sym.typ.isNil:
         result = "type expected, but symbol '$1' has no type." % r.symstr
-
       else:
         result = "type expected, but got symbol '$1' of kind '$2'" %
           [r.sym.name.s, r.sym.kind.toHumanStr]
@@ -792,16 +786,13 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
       if r.typ.isNil:
         if r.sym.isNil:
           result = "cannot instantiate: '$1'" % r.ast.render
-
         else:
           result = "cannot instantiate: '$1'" % r.symstr
-
       elif r.ownerSym.isNil:
         result.addf(
           "cannot instantiate: '$1'; Maybe generic arguments are missing?",
           typeToString(r.typ, preferDesc)
         )
-
       else:
         result.addf(
           "cannot instantiate '$1' inside of type definition: '$2'; " &
@@ -1080,7 +1071,6 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
 
       if conf.isDefined("nimLegacyTypeMismatch"):
         result.add  " got <$1>" % actualStr
-
       else:
         result.add  " got '$1' for '$2'" % [actualStr, r.ast.renderTree]
 
@@ -1819,7 +1809,6 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
           r.symbols[0].name.s,
           conf.toStr(r.symbols[1].info)
         )
-
       else:
         result = "attempt to redefine: '" & r.symstr & "'"
 
@@ -2128,13 +2117,11 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
     of rsemHoleEnumConvert:
       result = "conversion to enum with holes is unsafe: $1" % r.ast.render
 
-
     of rsemAnyEnumConvert:
       result = "enum conversion: $1" % r.ast.render
 
     of rsemUseOfGc:
       result = "'$1' uses GC'ed memory" % r.ast.render
-
 
     of rsemPattern:
       result = r.ast.render
@@ -2244,6 +2231,20 @@ proc reportBody*(conf: ConfigRef, r: SemReport): string =
 
     of rsemDiagnostics:
       result.add presentDiagnostics(conf, r.diag, startWithNewLine = false)
+
+    of rsemCompilerOptionInvalid:
+      result = "Invalid compiler option - " % r.str
+
+    of rsemDeprecatedCompilerOpt:
+      result = "'$#' is deprecated, now a noop" % r.str
+
+    of rsemCompilerOptionArgInvalid:
+      result = "Unexpected value for option '$#'. Expected one of $#, but got '$#'" %
+                [r.str, r.allowedOptArgs.join(", "), r.badCompilerOptArg]
+
+    of rsemDeprecatedCompilerOptArg:
+      result = "'$#' is deprecated for option '$#', now a noop" %
+                [r.str, r.compilerOptArg]
 
 
 const standalone = {
@@ -2588,50 +2589,9 @@ proc presentFailedCandidates(
 
   result = (prefer, candidates)
 
-proc genFeatureDesc[T: enum](t: typedesc[T]): string {.compileTime.} =
-  result = ""
-  for f in T:
-    if result.len > 0: result.add "|"
-    result.add $f
-
-const
-  HelpMessage = "Nim Compiler Version $1 [$2: $3]\n" &
-      "Copyright (c) 2006-" & copyrightYear & " by Andreas Rumpf\n"
-  CommitMessage = "Source hash: $1\n" &
-    "Source date: $2\n"
-
-  Usage = slurp"../doc/basicopt.txt".replace(" //", "   ")
-  AdvancedUsage = slurp"../doc/advopt.txt".replace(" //", "   ") %
-    genFeatureDesc(Feature)
-
-
 proc reportBody*(conf: ConfigRef, r: InternalReport): string =
   assertKind r
   case InternalReportKind(r.kind):
-    of rintCliKinds:
-      let d = r.cliData
-      result = HelpMessage % [
-        VersionAsString,
-        platform.OS[d.os].name,
-        CPU[d.cpu].name
-      ]
-
-      if r.kind == rintCliVersion:
-        if d.sourceHash != "":
-          result.add "\n"
-          result.add CommitMessage % [d.sourceHash, d.sourceDate
-          ]
-
-        result.add "\n"
-        result.add "active boot switches:" & d.boot.join(" ")
-
-      else:
-        if r.kind in {rintCliHelp, rintCliFullHelp}:
-          result.add Usage
-
-        if r.kind in {rintCliFullHelp, rintCliAdvancedUsage}:
-          result.add AdvancedUsage
-
     of rintStackTrace:
       result = conf.formatTrace(r.trace)
 
@@ -2648,35 +2608,7 @@ proc reportBody*(conf: ConfigRef, r: InternalReport): string =
           kind in r.enabledOptions, "X", " "), $kind)
 
     of rintSuccessX:
-      var build = ""
-      let par = r.buildParams
-      if conf.cmd in cmdBackends:
-        build.add "gc: $#; " % par.gc
-
-        if par.threads:
-          build.add "threads: on; "
-
-        build.add "opt: "
-        if par.optimize == "debug":
-          build.add "none (DEBUG BUILD, `-d:release` generates faster code)"
-
-        else:
-          build.add par.optimize
-          build.add "; "
-          build.add par.buildMode
-          build.add " "
-
-      let mem =
-        if par.isMaxMem:
-          formatSize(par.mem) & " peakmem"
-
-        else:
-          formatSize(par.mem) & " totmem"
-
-      result = &"{conf.prefix(r)}{build}{par.linesCompiled} lines; {par.sec:.3f}s; {mem}; proj: {par.project}; out: {par.output}{conf.suffix(r)}"
-
-    of rintUsingLeanCompiler:
-      result = r.msg
+      unreachable("this should never use reports")
 
     of rintMissingStackTrace:
       result = """
@@ -2702,11 +2634,8 @@ To create a stacktrace, rerun compilation with './koch temp $1 <file>'
       )
 
     of rintEchoMessage:
-      if conf.cmd == cmdInteractive:
-        result = ">>> " & r.msg
-
-      else:
-        result = r.msg
+      result = if conf.cmd == cmdInteractive: ">>> " & r.msg
+               else:                          r.msg
 
     of rintCannotOpenFile, rintWarnCannotOpenFile:
       result = "cannot open file: $1" % r.file
@@ -2735,9 +2664,6 @@ To create a stacktrace, rerun compilation with './koch temp $1 <file>'
     of rintSource:
       assert false, "is a configuration hint, should not be reported manually"
 
-    of rintGCStats:
-      result = r.msg
-
     of rintQuitCalled:
       result = "quit() called"
 
@@ -2745,57 +2671,7 @@ To create a stacktrace, rerun compilation with './koch temp $1 <file>'
       assert false, "is a configuration hint, should not be reported manually"
 
     of rintNimconfWrite:
-      result = ""
-
-    of rintDumpState:
-      if getConfigVar(conf, "dump.format") == "json":
-        let s = r.stateDump
-        var definedSymbols = newJArray()
-        for s in s.definedSymbols:
-          definedSymbols.elems.add(%s)
-
-        var libpaths = newJArray()
-        var lazyPaths = newJArray()
-        for dir in conf.searchPaths:
-          libpaths.elems.add(%dir.string)
-
-        for dir in conf.lazyPaths:
-          lazyPaths.elems.add(%dir.string)
-
-        var hints = newJObject()
-        for (a, state) in s.hints:
-          hints[$a] = %(state)
-
-        var warnings = newJObject()
-        for (a, state) in s.warnings:
-          warnings[$a] = %(state)
-
-        result = $(%[
-          (key: "version",         val: %s.version),
-          (key: "nimExe",          val: %s.nimExe),
-          (key: "prefixdir",       val: %s.prefixdir),
-          (key: "libpath",         val: %s.libpath),
-          (key: "project_path",    val: %s.projectPath),
-          (key: "defined_symbols", val: definedSymbols),
-          (key: "lib_paths",       val: libpaths),
-          (key: "lazyPaths",       val: lazyPaths),
-          (key: "outdir",          val: %s.outdir),
-          (key: "out",             val: %s.out),
-          (key: "nimcache",        val: %s.nimcache),
-          (key: "hints",           val: hints),
-          (key: "warnings",        val: warnings),
-        ])
-
-      else:
-        result.add "-- list of currently defined symbols --\n"
-        let s = r.stateDump
-        for s in s.definedSymbols:
-          result.add(s, "\n")
-
-        result.add "-- end of list --\n"
-
-        for it in s.libPaths:
-          result.add it, "\n"
+      result = r.msg
 
 proc reportFull*(conf: ConfigRef, r: InternalReport): string =
   assertKind r
@@ -2879,7 +2755,7 @@ proc reportBody*(conf: ConfigRef, r: LexerReport): string =
       result.add "closing \" expected"
 
     of rlexExpectedToken:
-      assert false
+      result.add "expected '$1'" % r.msg
 
     of rlexCfgInvalidDirective:
       result.addf("invalid directive: '$1'", r.msg)
@@ -2915,11 +2791,10 @@ proc reportBody*(conf: ConfigRef, r: ExternalReport): string =
   assertKind r
   case ExternalReportKind(r.kind):
     of rextConf:
-      result.add(
-        conf.prefix(r),
-        "used config file '$1'" % r.msg,
-        conf.suffix(r)
-      )
+      result.add("used config file '$1'" % r.msg, conf.suffix(r))
+
+    of rextCmdRequiresFile:
+      result = "command requires a filename"
 
     of rextCommandMissing:
       result.add("Command missing")
@@ -2930,65 +2805,47 @@ proc reportBody*(conf: ConfigRef, r: ExternalReport): string =
     of rextInvalidWarning:
       result.add("Invalid warning - ", r.cmdlineProvided)
 
-    of rextInvalidCommand:
-       result.add("Invalid command - ", r.cmdlineProvided)
-
-    of rextInvalidCommandLineOption:
-      result.add("Invalid command line option - ", r.cmdlineProvided)
+    of rextCfgInvalidOption:
+      result.add("Invalid config option - ", r.cmdlineSwitch)
 
     of rextUnknownCCompiler:
-      result = "unknown C compiler: '$1'. Available options are: $2" % [
-        r.passedCompiler,
-        r.knownCompilers.join(", ")
-      ]
+      result = "unknown C compiler: '$1'. Available options are: $2" %
+                [r.passedCompiler, r.knownCompilers.join(", ")]
 
     of rextOnlyAllOffSupported:
       result = "only 'all:off' is supported"
 
     of rextExpectedOnOrOff:
-      result = "'on' or 'off' expected, but '$1' found" % r.cmdlineProvided
+      result = "option '$1' expected 'on' or 'off', but '$2' found" %
+                [r.cmdlineSwitch, r.cmdlineProvided]
 
-    of rextExpectedOnOrOffOrList:
-      result = "'on', 'off' or 'list' expected, but '$1' found" % r.cmdlineProvided
+    of rextCfgExpectedOnOffOrList:
+      result = "'on', 'off', or 'list' expected for $1, but '$2' found" %
+                [r.cmdlineSwitch, r.cmdlineProvided]
 
-    of rextExpectedCmdArgument:
-      result = "argument for command line option expected: '$1'" % r.cmdlineSwitch
+    of rextCfgExpectedArgument:
+      result = "argument for config option expected: '$1'" %
+                r.cmdlineSwitch
 
-    of rextExpectedNoCmdArgument:
-      result = "invalid argument ('$1') for command line option: '$2'" %
-                  [r.cmdlineProvided, r.cmdlineSwitch]
+    of rextCfgExpectedNoArgument:
+      result = "$1 expects no arguments, but '$2' found" %
+                [r.cmdlineSwitch, r.cmdlineProvided]
 
-    of rextCmdDisallowsAdditionalArguments:
-      result = "$1 command does not support additional arguments: '$2'" %
-                  [r.cmdlineSwitch, r.cmdlineProvided]
+    of rextCfgArgMalformedKeyValPair:
+      result = "option '$#' has malformed `key:value` argument: '$#" %
+                [r.cmdlineSwitch, r.cmdlineProvided]
 
-    of rextInvalidNumber:
-      result = "$1 is not a valid number" % r.cmdlineProvided
+    of rextCfgArgUnexpectedValue:
+      result = "Unexpected value for switch '$1'. Expected one of $2, but got '$3'" %
+                [r.cmdlineSwitch, r.cmdlineProvided, r.cmdlineAllowed.join(", ")]
 
-    of rextInvalidValue:
-      result = ("Unexpected value for " &
-        "the $1. Expected one of $2, but got '$3'") % [
-          r.cmdlineSwitch,
-          r.cmdlineAllowed.mapIt("'" & it & "'").join(", "),
-          r.cmdlineProvided
-      ]
+    of rextCfgArgExpectedValueFromList:
+      result = "expected value for switch '$1'. Expected one of $2, but got nothing" %
+                [r.cmdlineSwitch, r.cmdlineAllowed.join(", ")]
 
-    of rextUnexpectedValue:
-      result = "Unexpected value for $1. Expected one of $2" % [
-        r.cmdlineSwitch, r.cmdlineAllowed.join(", ")
-      ]
-
-    of rextExpectedTinyCForRun:
-      result = "'run' command not available; rebuild with -d:tinyc"
-
-    of rextExpectedCbackendForRun:
-      result = "'run' requires c backend, got: '$1'" % $conf.backend
-
-    of rextExpectedRunOptForArgs:
-      result = "arguments can only be given if the '--run' option is selected"
-
-    of rextUnexpectedRunOpt:
-      result = "'$1 cannot handle --run" % r.cmdlineProvided
+    of rextCfgArgUnknownExperimentalFeature:
+      result = "unknown experiemental feature: '$1'. Available options are: $2" %
+                [r.cmdlineProvided, r.cmdlineAllowed.join(", ")]
 
     of rextInvalidPath:
       result = "invalid path: " & r.cmdlineProvided
@@ -2996,19 +2853,20 @@ proc reportBody*(conf: ConfigRef, r: ExternalReport): string =
     of rextInvalidPackageName:
       result = "invalid package name: " & r.packageName
 
-    of rextDeprecated:
-      result = r.msg
+    of rextCfgArgDeprecatedNoop:
+      result = "'$#' is deprecated for flag '$#', now a noop" %
+                [r.cmdlineProvided, r.cmdlineSwitch]
 
     of rextPath:
       result = "added path: '$1'" % r.packagePath
 
 proc reportFull*(conf: ConfigRef, r: ExternalReport): string =
   assertKind r
-  reportBody(conf, r)
+  result.add(prefix(conf, r), reportBody(conf, r))
 
 proc reportShort*(conf: ConfigRef, r: ExternalReport): string {.inline.} =
   # mostly created for nimsuggest
-  reportBody(conf, r)
+  result.add(prefixShort(conf, r), reportBody(conf, r))
 
 const
   dropTraceExt = off
@@ -3685,7 +3543,6 @@ const
   traceDir = "nimCompilerDebugTraceDir"
 
 var
-  lastDot: bool = false
   traceFile: File
   fileIndex: int = 0
 
@@ -4390,6 +4247,31 @@ func astDiagToLegacyReport(conf: ConfigRef, diag: PAstDiag): Report {.inline.} =
       return astDiagToLegacyReport(conf, diag.defNameSymData.identGenErr.diag)
     of adSemDefNameSymExistingError:
       return astDiagToLegacyReport(conf, diag.wrongNode.diag)
+  of adSemCompilerOptionInvalid,
+      adSemDeprecatedCompilerOpt:
+    semRep = SemReport(
+      location: some diag.location,
+      reportInst: diag.instLoc.toReportLineInfo,
+      kind: kind,
+      ast: diag.wrongNode,
+      str: diag.badCompilerOpt.getStr)
+  of adSemCompilerOptionArgInvalid:
+    semRep = SemReport(
+      location: some diag.location,
+      reportInst: diag.instLoc.toReportLineInfo,
+      kind: rsemCompilerOptionArgInvalid,
+      ast: diag.wrongNode,
+      str: diag.forCompilerOpt.getStr,
+      badCompilerOptArg: diag.badCompilerOptArg.getStr,
+      allowedOptArgs: allowedCompileOptionArgs(diag.forCompilerOpt.getStr))
+  of adSemDeprecatedCompilerOptArg:
+    semRep = SemReport(
+      location: some diag.location,
+      reportInst: diag.instLoc.toReportLineInfo,
+      kind: rsemDeprecatedCompilerOptArg,
+      ast: diag.wrongNode,
+      str: diag.compilerOpt.getStr,
+      compilerOptArg: diag.compilerOptArg.getStr)
   of adVmError:
     let
       kind = diag.vmErr.kind.astDiagVmToLegacyReportKind()
@@ -4580,16 +4462,10 @@ proc reportHook*(conf: ConfigRef, r: Report): TErrorHandling =
       #      infrastructure is overwrought. seriously, they're not hints, they're
       #      progress indicators.
       conf.write(".")
-      lastDot = true
     else:
       var msg: seq[string]
-      if lastDot:
-        msg.add("")
-        lastDot = false
-
       if conf.hack.reportInTrace:
         var indent {.global.}: int
-
         case r.kind:
         of rdbgTracerKinds:
           if r.kind == rdbgTraceStep:
@@ -4606,7 +4482,11 @@ proc reportHook*(conf: ConfigRef, r: Report): TErrorHandling =
       else:
         msg.add(conf.reportFull(r))
 
-      if conf.hack.bypassWriteHookForTrace:
+      if conf.hack.reportInTrace and conf.hack.bypassWriteHookForTrace:
+        # leverage `msgs` output once it's free of legacy reports
+        if stdOrrStdout in conf.lastMsgWasDot:
+          conf.lastMsgWasDot.excl stdOrrStdout
+          echo ""
         for item in msg:
           echo item
       else:

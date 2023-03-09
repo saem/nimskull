@@ -263,7 +263,6 @@ proc execute(cmd: IdeCmd, file, dirtyfile: AbsoluteFile, line, col: int;
   if cmd == ideChk:
     graph.config.structuredReportHook = nimsuggest.reportHook
     graph.config.writeHook = myLog
-
   else:
     graph.config.structuredReportHook =
       proc(conf: ConfigRef, report: Report): TErrorHandling = doNothing
@@ -461,11 +460,8 @@ proc execCmd(cmd: string; graph: ModuleGraph; cachedMsgs: CachedMsgs) =
     results.send(Suggest(section: ideNone))
 
   template toggle(sw) =
-    if sw in conf.globalOptions:
-      excl(conf, sw)
-    else:
-      incl(conf, sw)
-
+    if sw in conf.globalOptions: excl(conf, sw)
+    else:                        incl(conf, sw)
     sentinel()
     return
 
@@ -621,6 +617,9 @@ proc mainCommand(graph: ModuleGraph) =
 proc processCmdLine*(pass: TCmdLinePass, cmd: string; conf: ConfigRef) =
   var p = parseopt.initOptParser(cmd)
   var findProject = false
+  let startingErrCount = conf.errorCounter
+    ## do this because if we're in the second pass, we don't want to quit due
+    ## to prior config file errors.
   while true:
     parseopt.next(p)
     case p.kind
@@ -668,7 +667,12 @@ proc processCmdLine*(pass: TCmdLinePass, cmd: string; conf: ConfigRef) =
         conf.suggestMaxResults = parseInt(p.val)
       of "find":
         findProject = true
-      else: processSwitch(pass, p, conf)
+      else:
+        let
+          res = processSwitch(pass, p, conf)
+          evts = procSwitchResultToEvents(conf, pass, p.key, p.val, res)
+        for e in evts.items:
+          conf.cliEventLogger(e)
     of cmdArgument:
       let a = unixToNativePath(p.key)
       if dirExists(a) and not fileExists(a.addFileExt("nim")):
@@ -682,7 +686,8 @@ proc processCmdLine*(pass: TCmdLinePass, cmd: string; conf: ConfigRef) =
             conf.projectName = a
         else:
           conf.projectName = a
-      # if processArgument(pass, p, argsCount): break
+    if conf.errorCounter > startingErrCount:
+      break
 
 proc handleCmdLine(cache: IdentCache; conf: ConfigRef) =
   let self = NimProg(
@@ -696,10 +701,13 @@ proc handleCmdLine(cache: IdentCache; conf: ConfigRef) =
     return
 
   self.processCmdLineAndProjectPath(conf)
+  if conf.errorCounter > 0:
+    msgQuit(int8(conf.errorCounter > 0))
 
   if gMode != mstdin:
     conf.writelnHook =
-      proc (conf: ConfigRef, msg: string, flags: MsgFlags) = discard
+      proc (conf: ConfigRef, msg: string, flags: MsgFlags) =
+        myLog(conf, msg)
 
   # Find Nim's prefix dir.
   #
@@ -724,7 +732,7 @@ proc handleCmdLine(cache: IdentCache; conf: ConfigRef) =
   graph.onMarkUsed = proc (g: ModuleGraph; info: TLineInfo; s: PSym; usageSym: var PSym; isDecl: bool) =
     suggestSym(g, info, s, usageSym, isDecl)
   graph.onSymImport = graph.onMarkUsed # same callback
-  if self.loadConfigsAndProcessCmdLine(cache, conf, graph):
+  if self.loadConfigsAndProcessCmdLine(cache, conf, graph, stopOnError = false):
     mainCommand(graph)
 
 when isMainModule:
@@ -775,7 +783,6 @@ else:
         if conf.projectName.len == 0: conf.projectName = a
       else:
         conf.projectName = a
-          # if processArgument(pass, p, argsCount): break
     let
       cache = newIdentCache()
       conf = newConfigRef(cli_reporter.reportHook)
@@ -837,7 +844,6 @@ else:
           retval.add(Suggest(section: ideChk, filePath: toFullPath(conf, info),
             line: toLinenumber(info), column: toColumn(info), doc: msg,
             forth: $sev))
-
       else:
         conf.structuredErrorHook = nil
       executeNoHooks(conf.ideCmd, file, dirtyfile, line, col, nimsuggest.graph)

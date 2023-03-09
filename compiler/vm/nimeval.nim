@@ -27,7 +27,7 @@ import
   compiler/front/[
     condsyms,
     options,
-    scriptconfig,
+    scripting,
     cli_reporter
   ],
   compiler/utils/[
@@ -206,9 +206,8 @@ proc runRepl*(
   conf.cmd = cmdInteractive # see also `setCmd`
   conf.setErrorMaxHighMaybe
   initDefines(conf.symbols)
-  defineSymbol(conf, "nimscript")
   if supportNimscript:
-    defineSymbol(conf, "nimconfig")
+    defineSymbol(conf, "nimscript")
 
   registerPass(graph, verbosePass)
   registerPass(graph, semPass)
@@ -216,9 +215,6 @@ proc runRepl*(
   var m = graph.makeStdinModule()
   incl(m.flags, sfMainModule)
   var idgen = idGeneratorFromModule(m)
-
-  if supportNimscript:
-    graph.vm = setupVM(m, cache, "stdin", graph, idgen)
 
   graph.compileSystemModule()
   processModule(graph, m, idgen, llStreamOpenStdIn(r))
