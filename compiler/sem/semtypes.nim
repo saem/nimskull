@@ -598,6 +598,28 @@ proc checkForOverlap(c: PContext, t: PNode, currentEx, branchIndex: int) =
           ast: ex,
           overlappingGroup: t[i][j].skipConv))
 
+when false:
+  proc semBranchRange2(c: PContext, t, b: PNode, firstIdx, lastIdx: int, 
+                      covered: var Int128): PNode =
+    checkMinSonsLen(t, 1, c.config)
+    let
+      a = b[firstIdx]
+      b = b[lastIdx]
+      ac = semConstExpr2(c, a)
+      bc = semConstExpr2(c, b)
+      at = fitNode(c, t[0].typ, ac, ac.info).skipConvTakeType
+      bt = fitNode(c, t[0].typ, bc, bc.info).skipConvTakeType
+
+    result = newNodeTreeI(nkRange, b.info, at, bt)
+
+    if emptyRange(ac, bc):
+      result = c.config.newError(b, PAstDiag(kind: adSemRangeIsEmpty,
+                                            evaledRange: result,
+                                            firstIdx: firstIdx,
+                                            lastIdx: lastIdx))
+    else:
+      covered = covered + getOrdValue(bc) + 1 - getOrdValue(ac)
+
 proc semBranchRange(c: PContext, t, a, b: PNode, covered: var Int128): PNode =
   checkMinSonsLen(t, 1, c.config)
   let ac = semConstExpr(c, a)

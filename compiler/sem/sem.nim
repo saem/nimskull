@@ -193,6 +193,7 @@ proc fitNodePostMatch(c: PContext, formal: PType, arg: PNode): PNode =
 
 
 proc fitNode(c: PContext, formal: PType, arg: PNode; info: TLineInfo): PNode =
+  # xxx: "error correction" mentioned below is a hack for better suggestions
   if arg.kind == nkError:
     result = arg
     return
@@ -209,15 +210,15 @@ proc fitNode(c: PContext, formal: PType, arg: PNode; info: TLineInfo): PNode =
       if sameType(ch.typ, formal):
         return getConstExpr(c.module, ch, c.idgen, c.graph)
 
-    # XXX: why don't we set the `typ` field to formal like above and below?
     result = typeMismatch(c.config, info, formal, arg.typ, arg)
   else:
     result = indexTypesMatch(c, formal, arg.typ, arg)
     if result == nil:
       result = typeMismatch(c.config, info, formal, arg.typ, arg)
       if result.kind != nkError:
+        debug arg
+        doAssert false
         # error correction:
-        # XXX: is this "error correction" or actually "fitting" the node?
         result = copyTree(arg)
         result.typ = formal
     else:
@@ -517,7 +518,26 @@ proc evalConstExpr(c: PContext, n: PNode): PNode =
     else:
       res
 
-proc semConstExpr(c: PContext, n: PNode): PNode =
+proc semConstExpr2(c: PContext, n: PNode): PNode =
+  ## Analyses the expression `n` and, on success, tries to evaluate it (i.e.
+  ## materialize it into AST that represents a concrete value). If either fail
+  ## returns the `nkError`.
+  addInNimDebugUtils(c.config, "semConstExpr2", n, result)
+  result = semExprWithType(c, n)
+  case result.kind
+  of nkError:
+    discard "already set to error, simply return it"
+  of nkSymChoices:
+    if result[0].typ.skipTypes(abstractInst).kind == tyEnum:
+      discard "callee needs to figure out what to do with this"
+    else:
+      result = evalConstExpr(c, result)
+  else:
+    result = evalConstExpr(c, result)
+
+proc semConstExpr(c: PContext, n: PNode): PNode {.
+    deprecated: "upgrade to semConstExpr2, "
+  .} =
   ## Analyses the expression `n` and, on success, tries to evaluate it (i.e.
   ## materialize it into AST that represents a concrete value). If the analysis
   ## part fails, returns `n` -- if the evaluation fails returns the sem-checked
