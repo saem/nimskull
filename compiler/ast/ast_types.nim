@@ -1109,6 +1109,7 @@ type
     adSemCalleeHasAnError
     # sem
     adSemExpressionHasNoType
+    adSemDefinitionNameSym   ## when creating a sym node from `nkIdentKinds`
     # semtypes
     adSemTypeExpected
     # semtempl
@@ -1470,6 +1471,24 @@ type
     of adSemInvalidIntDefine,
         adSemInvalidBoolDefine:
       invalidDef*: string
+    of adSemDefinitionNameSym:
+      defNameSym*: PSym
+      defNameSymData*: AdSemDefinitionNameSym
+
+  AdSemDefinitionNameSymKind* = enum
+    adSemDefinitionNameSymExpectedKindMismatch
+    adSemDefinitionNameSymIdentGenFailed
+    adSemDefinitionNameSymExistingError
+    adSemDefinitionNameSymIllformedAst
+  AdSemDefinitionNameSym* = object
+    case kind*: AdSemDefinitionNameSymKind:
+      of adSemDefinitionNameSymExpectedKindMismatch:
+        expectedKind*: TSymKind # xxx: maybe always capture this?
+      of adSemDefinitionNameSymIdentGenFailed:
+        identGenErr*: PNode
+      of adSemDefinitionNameSymExistingError,
+          adSemDefinitionNameSymIllformedAst:
+        discard
 
   TNode*{.final, acyclic.} = object # on a 32bit machine, this takes 32 bytes
     id*: NodeId

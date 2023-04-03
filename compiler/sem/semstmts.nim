@@ -2593,7 +2593,12 @@ proc semRoutineName(c: PContext, n: PNode, kind: TSymKind; allowAnon = true): PN
     else:
       return c.config.newError(n, PAstDiag(kind: adSemExpectedIdentifier))
   of nkSym:
-    s = newSymG(kind, n, c)
+    result = newSymGNode(kind, n, c)
+    if kind == skTemplate: # TODO: update the other code paths
+      return
+    else:
+      s = result.getDefNameSymOrRecover()
+    # s = newSymG(kind, n, c)
   of nkPostfix, nkIdent, nkAccQuoted:
     # do *not* use ``semIdentDef``. It marks the procedure as global even if
     # not at top-level scope. In addition, using it would also allow pragma
@@ -3114,8 +3119,22 @@ proc semRoutineDef(c: PContext, n: PNode): PNode =
   result[namePos] =
     semRoutineName(c, n[namePos], kind, allowAnon = kind in AllowAnon)
 
+  case result[namePos].kind
+  of nkError:
+    if result[namePos].diag.kind == adSemDefinitionNameSym and
+        kind == skTemplate:
+      discard "don't leave early"
+    else:
+      return c.config.wrapError(result) # early out
+  else:
+    discard
+
   if result[namePos].isError:
-    return c.config.wrapError(result) # early out
+    if kind == skTemplate and
+        result[namePos].diag.kind == adSemDefinitionNameSym:
+      discard "don't leave early, semTemplateDef is updated"
+    else:
+      return c.config.wrapError(result) # early out
 
   result =
     case kind
