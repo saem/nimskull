@@ -13,7 +13,8 @@
 ## if the buffer needs refilling.
 
 import
-  llstream, strutils
+  std/strutils,
+  compiler/ast/llstream
 
 const
   Lrz* = ' '

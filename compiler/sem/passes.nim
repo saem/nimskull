@@ -210,8 +210,8 @@ proc processModule*(
           graph, graph.config.active.implicitIncludes,
           nkIncludeStmt, passesArray, module)
 
-    # Until toplevel compilation fails (returns `false` from processing),
-    # execute the compilation
+    # process toplevel statements until finished or processing requests
+    # cancellation (excessive errors, can't progress, etc)
     var processingOk = true
     while processingOk:
       # Processing was ok but compilation was halted via something else.
@@ -268,7 +268,6 @@ proc processModule*(
           if nextStatement.kind == nkEmpty or
              nextStatement.kind notin imperativeCode:
             rest = nextStatement
-
           else:
             toplevelStatements.add nextStatement
 
@@ -276,13 +275,11 @@ proc processModule*(
           graph, toplevelStatements, passesArray)
 
         if not rest.isNil() and processingOk:
-          processingOk = processTopLevelStmt(
-            graph, rest, passesArray)
+          processingOk = processTopLevelStmt(graph, rest, passesArray)
 
       else:
         # Otherwise evaluate the code
-        processingOk = processTopLevelStmt(
-          graph, firstStatement, passesArray)
+        processingOk = processTopLevelStmt(graph, firstStatement, passesArray)
 
     parser.closeParser()
 
