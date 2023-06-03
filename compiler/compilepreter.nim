@@ -227,7 +227,7 @@ type
 
 # INTERPRETER-AS-COMPILER STARTS HERE
 # TODO:
-# 1. generate in-to-out-structions: `nim c -d:oustructions foo.nim`
+# 1. generate in-to-out-structions: `nim --compilepreter c foo.nim`
 #   - sketch out `FirstInstruction` and `FirstOutstruction`
 #   - rig up the `interpret` proc in `sem`
 #   - just start seeing it echo
@@ -482,10 +482,10 @@ type
         commentId*: 
       # TODO: write the rest of these branches!
 
-  FirstInterpreter = object
+  FirstInterpreter* = object
 
-func initInterpreter(): FirstInterpreter =
+func initInterpreter*(): FirstInterpreter =
   discard
 
-func interpret(interp: FirstInterpreter, instr: FirstInstruction): FirstOutstruction =
+func interpret*(interp: FirstInterpreter, instr: FirstInstruction): FirstOutstruction =
   discard "rig me up already!"
