@@ -590,7 +590,7 @@ type
 
 
     # -------------------------------------------------------------------------
-    # start: not entirely clear why, function pionters for certain sem calls?
+    # start: not entirely clear why, function pointers for certain sem calls?
     # -------------------------------------------------------------------------
     semConstExpr*: proc (c: PContext, n: PNode): PNode {.nimcall.} # for the pragmas
       ## used to break cyclic dependencies, init in sem during module open and

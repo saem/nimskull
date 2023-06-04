@@ -329,7 +329,6 @@ type
   FirstInstrKind* {.pure.} = enum
     startCompile      ## tie-in with `sem.semPass` and `main` initialization
     processModule     ## tie-in with `sem.myOpen`
-    processStatement  ## tie-in with `sem.myProcess/semStmtAndGenerateGenerics`
     importModule      ## allow auto-injecting `import std/system`
     finishModule      ## tie-in with `sem.myclose`
     finishCompile     ## mostly for the interpreter(s)
@@ -343,6 +342,9 @@ type
   FirstEvtKind* {.pure.} = enum
     ## these are the "oustructions", each of these are paired with statuses to
     ## get started/success/fail/cancel/etc variants (see `OutstrStatus`).
+    # xxx: hmm, if modules is a "high-level" feature, we could delay defining
+    #      `feModule`, `feImport`, `feExport` and friends, creating a smaller
+    #      core language
     feCompile        ## either the whole project, or a sub-stage
     feDiagnostic     ## hint/warn/error
     feModule         ## module symbol/type
@@ -591,10 +593,6 @@ proc legacyStartCompile*(interp: var FirstInterpreter, runId = neverRanBefore) =
   interp.logger.startEvt(interp.runState.baseRunId, phaseFirst,
                          feCompile.UntypedEvtTag, data)
 
-proc legacyProcessModule*(interp: var FirstInterpreter, moduleId: ModuleId) =
-  interp.logger.startEvt(interp.runState.baseRunId, phaseFirst,
-                         feModule.UntypedEvtTag, moduleId.uint64)
-
 proc legacyFinishCompile*(interp: var FirstInterpreter, runId: RunId) =
   assert interp.runState.baseRunId.int32 == runId.int32
   interp.logger.closeEvt(runId, phaseFirst, successful,
@@ -602,10 +600,34 @@ proc legacyFinishCompile*(interp: var FirstInterpreter, runId: RunId) =
   # TODO: should handle the "commit" here... ugh, need to tie into errors, man
   #       I hope that doesn't include too much legacy reports stupidity.
 
+proc legacyProcessModule*(interp: var FirstInterpreter, moduleId: ModuleId) =
+  interp.logger.startEvt(interp.runState.baseRunId, phaseFirst,
+                         feModule.UntypedEvtTag, moduleId.uint64)
+
 proc legacyProcessSystemModule*(interp: var FirstInterpreter, moduleId: ModuleId) =
   ## legacy integration - because the system module owns core sym/type
   ## definitions we need special handling
-  # todo: write whatever extra code to handle this terrible approach to the
+  # TODO: write whatever extra code to handle this terrible approach to the
   #       system module
   interp.logger.startEvt(interp.runState.baseRunId, phaseFirst,
                          feModule.UntypedEvtTag, moduleId.uint64)
+
+proc legacyFinishModule*(interp: var FirstInterpreter, moduleId: ModuleId) =
+  ## legacy integration - to finish processing a module
+  # TODO: write whatever extra code to handle errors etc
+  interp.logger.closeEvt(interp.runState.baseRunId, phaseFirst, successful,
+                         feModule.UntypedEvtTag, moduleId.uint64)
+
+proc legacyImportModule*(interp: var FirstInterpreter, moduleId: ModuleId) =
+  ## legacy integration - mostly so we can auto-import the system module in
+  ## `sem.semStmtAndGenerateGenerics`
+  # xxx: should this be an "feAutoImport" instead so we can differentiate it,
+  #      do we save some data to track it, or do we ignore it all together?
+  interp.logger.startEvt(interp.runState.baseRunId, phaseFirst,
+                        feImport.UntypedEvtTag, moduleId.uint64)
+
+proc legacyFinishImportModule*(interp: var FirstInterpreter, moduleId: ModuleId) =
+  ## legacy integration - to finish processing a module
+  # TODO: write whatever extra code to handle errors etc
+  interp.logger.closeEvt(interp.runState.baseRunId, phaseFirst, successful,
+                         feImport.UntypedEvtTag, moduleId.uint64)

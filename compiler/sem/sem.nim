@@ -110,7 +110,12 @@ import compiler/tools/suggest
 when defined(nimfix):
   import compiler/nimfix/prettybase
 
-from compiler/compilepreter import legacyProcessModule, ModuleId
+from compiler/compilepreter import legacyProcessModule,
+                                   legacyProcessSystemModule,
+                                   legacyImportModule,
+                                   legacyFinishImportModule,
+                                   legacyFinishModule,
+                                   ModuleId
 
 # implementation
 
@@ -844,8 +849,12 @@ proc semStmtAndGenerateGenerics(c: PContext, n: PNode): PNode =
   if c.isfirstTopLevelStmt and not isImportSystemStmt(c.graph, n):
     if sfSystemModule notin c.module.flags and not isEmptyTree(n):
       assert c.graph.systemModule != nil
+      if c.config.newCompilepreter:
+        c.graph.compilepreter.legacyImportModule(ModuleId c.module.position)
       c.moduleScope.addSym c.graph.systemModule # import the system module
       importAllSymbols(c, c.graph.systemModule)
+      if c.config.newCompilepreter:
+        c.graph.compilepreter.legacyFinishImportModule(ModuleId c.module.position)
       inc c.topStmts
     else:
       # do not increment `c.topStmts`, as we want to ignore empty/trivial nodes
@@ -907,8 +916,12 @@ proc myOpen(graph: ModuleGraph; module: PSym;
     graph.systemModule = module
   c.topLevelScope = openScope(c)
   result = c
-  if c.config.newCompilepreter:
-    c.graph.compilepreter.legacyProcessModule(ModuleId module.position.int32)
+  if graph.config.newCompilepreter:
+    if sfSystemModule in module.flags:
+      # system module
+      graph.compilepreter.legacyProcessSystemModule(ModuleId module.position)
+    else:
+      graph.compilepreter.legacyProcessModule(ModuleId module.position)
       # xxx: using `m.position` like this is likely going to cause many issues
       #      because the compiler ends up loading the same module multiple
       #      times (varying ids)... not exactly sure why that happens
@@ -996,6 +1009,8 @@ proc myClose(graph: ModuleGraph; context: PPassContext, n: PNode): PNode =
   popOwner(c)
   popProcCon(c)
   sealRodFile(c)
+  if graph.config.newCompilepreter:
+    graph.compilepreter.legacyFinishModule(ModuleId c.module.position)
 
 const semPass* = makePass(myOpen, myProcess, myClose,
                           isFrontend = true)
