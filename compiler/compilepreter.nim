@@ -327,6 +327,16 @@ type
   CommentId* = int32 # TODO: make distinct
 
   FirstInstrKind* {.pure.} = enum
+    # xxx: this is only used to think about the `legacyXXX` procs and various
+    #      steps that are required currently.
+    # TODO: refactor around:
+    # - rename: 'compile' -> 'project'
+    # - project language has 'start/finishProject' (after rename)
+    # - module language has 'startfinish/Import'
+    # - compile language has 'start/finishCompile'
+    # - move 'project' stuff to `modulegraphs`
+    # - move module language stuff to `sem`
+    # - move compile language to `sem`
     startCompile      ## tie-in with `sem.semPass` and `main` initialization
     processModule     ## tie-in with `sem.myOpen`
     importModule      ## allow auto-injecting `import std/system`
@@ -586,7 +596,7 @@ proc legacyStartCompile*(interp: var FirstInterpreter, runId = neverRanBefore) =
   else:
     unreachable("invalid run id: " & $runId.int32)
 
-  # TODO: extract this data writing
+  # TODO: abstract this data writing
   let data = (uint64(interp.runState.baseRunId.int32) shl 32) or
              uint64(runId.int32)
 
