@@ -45,6 +45,9 @@ from compiler/ast/reports_sem import reportSym
 from compiler/ast/reports_external import ExternalReport
 from compiler/ast/report_enums import ReportKind
 
+from compiler/compilepreter import legacyStartCompile, legacyFinishCompile,
+                                   RunId
+
 proc resetSystemArtifacts*(g: ModuleGraph) =
   magicsys.resetSysTypes(g)
 
@@ -212,11 +215,18 @@ proc compileProject*(graph: ModuleGraph; projectFileIdx = InvalidFileIdx) =
   graph.config.mainPackageId = packSym.getnimblePkgId
   graph.importStack.add projectFile
 
+  if graph.config.newCompilepreter:
+    graph.compilepreter.legacyStartCompile(RunId 0'i32)
+
   if projectFile == systemFileIdx:
     discard graph.compileModule(projectFile, {sfMainModule, sfSystemModule})
   else:
     graph.compileSystemModule()
     discard graph.compileModule(projectFile, {sfMainModule})
+  
+  if graph.config.newCompilepreter:
+    graph.compilepreter.legacyFinishCompile(RunId 0'i32)
+
 
 proc makeModule*(graph: ModuleGraph; filename: AbsoluteFile): PSym =
   result = graph.newModule(fileInfoIdx(graph.config, filename))

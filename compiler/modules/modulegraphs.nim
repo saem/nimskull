@@ -18,6 +18,7 @@ import
     hashes,
     md5
   ],
+  compiler/compilepreter,
   compiler/front/[
     options,
     msgs,
@@ -113,7 +114,7 @@ type
                       #      once the ``passes`` design is phased out
     config*: ConfigRef
     cache*: IdentCache
-    vm*: RootRef # unfortunately the 'vm' state is shared project-wise, this will
+    vm*: RootRef # unfortunately the 'vm' state is shared project-wide, this will
                  # be clarified in later compiler implementations.
     doStopCompile*: proc(): bool {.closure.}
     usageSym*: PSym # for nimsuggest
@@ -143,6 +144,8 @@ type
         ## callback decouples regular compiler code `markUsed` from suggest
     onSymImport*: SuggestCallback
         ## callback decouples regular compiler code `importer` from suggest
+    compilepreter*: FirstInterpreter
+      ## the compilepreter instance, valid if `newCompilepreter` is true
 
   TPassContext* = object of RootObj # the pass's context
     idgen*: IdGenerator
@@ -497,6 +500,8 @@ proc newModuleGraph*(cache: IdentCache; config: ConfigRef): ModuleGraph =
   result.symBodyHashes = initTable[int, SigHash]()
   result.operators = initOperators(result)
   result.emittedTypeInfo = initTable[string, FileIndex]()
+  if config.newCompilepreter:
+    result.compilepreter = compilepreter.initInterpreter()
 
 proc resetAllModules*(g: ModuleGraph) =
   initStrTable(g.packageSyms)

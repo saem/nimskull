@@ -110,6 +110,8 @@ import compiler/tools/suggest
 when defined(nimfix):
   import compiler/nimfix/prettybase
 
+from compiler/compilepreter import legacyProcessModule, ModuleId
+
 # implementation
 
 proc semExpr(c: PContext, n: PNode, flags: TExprFlags = {}): PNode
@@ -905,6 +907,11 @@ proc myOpen(graph: ModuleGraph; module: PSym;
     graph.systemModule = module
   c.topLevelScope = openScope(c)
   result = c
+  if c.config.newCompilepreter:
+    c.graph.compilepreter.legacyProcessModule(ModuleId module.position.int32)
+      # xxx: using `m.position` like this is likely going to cause many issues
+      #      because the compiler ends up loading the same module multiple
+      #      times (varying ids)... not exactly sure why that happens
 
 # -- code-myprocess
 

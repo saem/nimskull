@@ -139,10 +139,12 @@ type
 const
   synStrLitKinds = {synStrLit, synRStrLit, synTripleStrLit}
   synLeafKinds = {synTupleClassTy, synCommentStmt}
-  synUptoUnaryKinds = {synDiscard, synReturn, synContinue, synBreak, synRaise,
-                       synRefTy, synVarTy, synPtrTy}
+  synUptoUnaryKinds = {synDiscardStmt, synReturnStmt, synContinueStmt,
+                       synBreakStmt, synRaiseStmt, synRefTy, synVarTy,
+                       synPtrTy}
     # xxx: split these into dedicated kinds leaf vs unary
-  synUnaryKinds = {synCallStrLit, synYield, synBind, synStaticStmt, synMutableTy}
+  synUnaryKinds = {synCallStrLit, synYieldStmt, synBind, synStaticStmt,
+                   synMutableTy}
   synBinaryKinds = {synInfix, synPrefix, synPostfix, synExprEqExpr,
                     synExprColonExpr, synDotExpr, synAsgn, synEnumFieldDef}
   synRoutineDefKinds = {synProcDef, synFuncDef, synMethodDef, synConverterDef,
@@ -159,12 +161,14 @@ const
                    synFinally, synDefer, synDo, synBindStmt, synMixinStmt,
                    synCast, synGenericParams, synFormalParams, synStmtList,
                    synStmtListExpr, synImportStmt, synImportExceptStmt,
-                   synConstSection, synLetSection, synVarSection,
-                   synTypeSection, synTypeDef, synEnumTy, synObjectTy,
-                   synTupleTy, synProcTy, synIteratorTy, synRecList,
-                   synRecCase, synRecWhen, synTypeOfExpr, synStaticTy,
-                   synDistinctTy, synTypeClassTy, synOfInherit, synArgList,
-                   synWith, synWithout, synAstStmt, synUsingStmt}
+                   synFromStmt, synIncludeStmt, synExportStmt,
+                   synExportExceptStmt, synConstSection, synConstDef,
+                   synLetSection, synVarSection, synTypeSection, synTypeDef,
+                   synEnumTy, synObjectTy, synTupleTy, synProcTy,
+                   synIteratorTy, synRecList, synRecCase, synRecWhen,
+                   synTypeOfExpr, synStaticTy, synDistinctTy, synTypeClassTy,
+                   synOfInherit, synArgList, synWith, synWithout, synAsmStmt,
+                   synUsingStmt}
     ## syntax nodes with 'n' kids (variable width)
     ## xxx: this category can likely be broken down further after fixing the
     ##      rest of the compiler and refining the structures
@@ -197,13 +201,20 @@ type
       of synFloat128Lit:    floa128tLit: BiggestFloat # xxx: this a bug?
       of synStrLitKinds:    strLit:      StrIdx
       of synNilLit:         discard
-      of synCustomLit:      litPart: StrIdx, suffix: IdentIdx
+      of synCustomLit:
+                            litPart:     StrIdx
+                            suffix:      IdentIdx
       of synUptoUnaryKinds: unary: bool ## if true next node is child
       of synLeafKinds:      discard
-      of synUnaryKinds:     discard ## next node is the child
-      of synBinaryKinds:    rightId: TreeIdx # left always follows the parent
-      of synRoutineDefKinds:extraId: ExtraIdx
-      of synNKidsKinds:     extraId: ExtraIdx, count: Natural
+      of synUnaryKinds:
+        ## next node is the child
+        discard
+      of synBinaryKinds:
+                            rightId: TreeIdx # left always follows the parent
+      of synRoutineDefKinds:routineExtraId: ExtraIdx
+      of synNKidsKinds:
+                            extraId: ExtraIdx
+                            count: Natural
 
   SyntaxDatum = object
     ## an abstract syntax tree as a singular unit of data (datum).
@@ -211,6 +222,8 @@ type
     extra: seq[TreeIdx]
     ident: seq[string]
     strs: seq[string]
+
+  ParsedSourceId = int32
 
   ParsedSourceKind = enum
     parserString
@@ -228,10 +241,10 @@ type
 # INTERPRETER-AS-COMPILER STARTS HERE
 # TODO:
 # 1. generate in-to-out-structions: `nim --compilepreter c foo.nim`
-#   - sketch out `FirstInstruction` and `FirstOutstruction`
-#   - rig up the `interpret` proc in `sem`
-#   - just start seeing it echo
-#   - revise goals
+#   - [x] rig up compilepreter into module pass
+#   - [ ] write logic and env change events to log
+#   - [ ] start seeing it echo
+#   - [ ] revise goals
 # 2. execute operations against type and sym "environments"
 #   - emit more "oustructions"
 # 3. sketch types and symbols
@@ -247,29 +260,71 @@ type
 # Risks:
 # - need a solid backend target + comptime definition for what PNode/PSym/etc
 #   data must be replicated, and to what fidelity
+# - I used a struct-of-arrays/vectorized format for logging but, the slightly
+#   more annoying to implement upfront, writing of untyped buffers (variable
+#   width data) might be a far more pleasant experience for each interpreter
 
 type
   ## various identifiers to point at various pieces of data
   # xxx: need to incorporate once we get to environments
-  RundId* = distinct int32
-  PhaseId* = distinct int32
-  ModuleId* = distinct int32
+  RunId* = distinct int32
+    ## valid values are 0 and above, some state tracking uses values outside
+    ## this range (negative numbers), for special casing, if runId was ever
+    ## set, the first run ever, etc.
 
-type
-  OutstrStatus* {.pure.} = enum
+  PhaseId* {.size: sizeof(uint8).} = enum
+    phaseFirst    ## whatever `FirstInterpreter` produces
+                  # xxx: kinda implies interpreter == level
+
+  UntypedEvtTag* = uint16
+    ## the erased event/outstruction enum value, must be sized to 16 bits max
+
+  OutstrStatus* {.pure, size: sizeof(uint8).} = enum
+    ## common to all events/outstructions, since everything is meant to be
+    ## transactional, this gives a single way to demarcate them consistently.
     started
     successful ## finished successfullly
     failed     ## finished, with errors
     cancelled  ## stopped by the interpreter
     aborted    ## stopped by the caller
 
+  LogEntry* = object
+    ## the log needs to be writeable by any interpter, so rather than figuring
+    ## out everything upfront in one mega-module, keep a standardize structure
+    ## and allow interpreters/modules own their definitions (schema on read).
+    # xxx: alternative approach is to change this to an index type and the
+    #      actual log is a big ol' byte array which we index into and cast to
+    #      pull out variably sized data... not sure what to do, this _seems_
+    #      easier to implement now and hopefully similarly easy to work with.
+    run*: RunId              # reserving space, ignoring for now
+    phase*: PhaseId
+    evtStatus*: OutstrStatus
+    evtTag*: UntypedEvtTag
+    data*: uint64            ## the data, identifier, or index; interpretation
+                             ## depends upon the `phase`/`status`/`evtTag`
+
+  InterpreterLogger* = object
+    ## logger for the interpreters, we use a single format, extra data is in
+    ## look aside buffers that need to be queried at time of read.
+    data: seq[LogEntry] # xxx: consider making an array list style structure
+
 type
   InstructionSource* = object
   OutstructionTarget* = object
 
+# import modulegraphs, because it seems `FirstInterpreter` layers over it...
+# still figuring out how this should work.
+from compiler/utils/idioms import unreachable
+# from compiler/modules/modulegraphs import ModuleGraph
+  # TODO: this is a recursive dependency, move "FirstInterpreter" out of this module
+
 type
   ## Some types start with "First", because they're the first interpeter we
   ## started defining, and to avoid getting stuck on names from the outset.
+
+  ModuleId* = distinct int32
+
+  CommentId* = int32 # TODO: make distinct
 
   FirstInstrKind* {.pure.} = enum
     startCompile      ## tie-in with `sem.semPass` and `main` initialization
@@ -462,15 +517,6 @@ type
     # xxx: `feDiagnostic` isn't fully thought through, need to consider error
     #      recovery
 
-  FirstInstruction* = object
-    case op*: FirstInstrKind:
-      of startCompile:     currRunId*: RunId
-      of processModule:    moduleId*: ModuleId
-      of processStatement: discard # xxx: how to refer to the AST?
-      of importModule:     moduleId*: ModuleId
-      of finishCompile:    discard
-      of abortCompile:     discard
-
   FirstOutstruction* = object
     status*: OutstrStatus
     case evt*: FirstEvtKind:
@@ -479,13 +525,87 @@ type
       of feModule, feImport:
         moduleId*: ModuleId
       of feComment:
-        commentId*: 
-      # TODO: write the rest of these branches!
+        commentId*: CommentId
+      else:
+        discard # TODO: write the rest of these branches!
+
+  FirstInterpreterRunState = object
+    ## state pertaining specifically to the run as opposed to more runtime
+    ## module-esque dependencies.
+    baseRunId: RunId  ## initialize this to -2 to indicate never set, otherwise
+                      ## when compared to another runId:
+                      ## * if this is lower, then this is a parent run
+                      ## * if this is equal, then it's the same run
+                      ## * if less than, then we're a child run or unrelated
+    runSerial: int32  ## how we generate runIds
 
   FirstInterpreter* = object
+    ## opaque type representing the interpreter, used to close over necessary
+    ## dependencies and state such that everything else can use it in blissful
+    ## ignorace.
+    # xxx: wrt naming: this might be the module or semantic module interpreter?
+    # legacyGraph: ModuleGraph
+    logger: InterpreterLogger
+    runState: FirstInterpreterRunState
 
-func initInterpreter*(): FirstInterpreter =
-  discard
+# logger interface/impl start
 
-func interpret*(interp: FirstInterpreter, instr: FirstInstruction): FirstOutstruction =
-  discard "rig me up already!"
+proc startEvt*(logger: var InterpreterLogger, run: RunId, phase: PhaseId,
+               tag: UntypedEvtTag, data: uint64) =
+  logger.data.add LogEntry(run: run, phase: phase, evtStatus: started,
+                           evtTag: tag, data: data)
+
+proc closeEvt*(logger: var InterpreterLogger, run: RunId, phase: PhaseId,
+               status: range[successful..aborted], tag: UntypedEvtTag,
+               data: uint64) =
+  logger.data.add LogEntry(run: run, phase: phase, evtStatus: status,
+                           evtTag: tag, data: data)
+
+# logger interface/impl end
+
+const
+  runNotInitialized = RunId -2
+  neverRanBefore* = RunId -1
+
+func initInterpreter*(#[m: ModuleGraph]#): FirstInterpreter =
+  FirstInterpreter(
+    # legacyGraph: ModuleGraph,
+    logger: InterpreterLogger(), # xxx: pass it in as an arg, maybe?
+    runState: FirstInterpreterRunState(baseRunId: runNotInitialized))
+
+proc legacyStartCompile*(interp: var FirstInterpreter, runId = neverRanBefore) =
+  ## legacy integration - need to mark the log with compile start
+  if runId.int32 == neverRanBefore.int32:
+    interp.runState.baseRunId = RunId 0
+    inc interp.runState.runSerial
+  elif runId.int32 >= 0:
+    interp.runState.baseRunId = RunId interp.runState.runSerial
+    inc interp.runState.runSerial
+  else:
+    unreachable("invalid run id: " & $runId.int32)
+
+  # TODO: extract this data writing
+  let data = (uint64(interp.runState.baseRunId.int32) shl 32) or
+             uint64(runId.int32)
+
+  interp.logger.startEvt(interp.runState.baseRunId, phaseFirst,
+                         feCompile.UntypedEvtTag, data)
+
+proc legacyProcessModule*(interp: var FirstInterpreter, moduleId: ModuleId) =
+  interp.logger.startEvt(interp.runState.baseRunId, phaseFirst,
+                         feModule.UntypedEvtTag, moduleId.uint64)
+
+proc legacyFinishCompile*(interp: var FirstInterpreter, runId: RunId) =
+  assert interp.runState.baseRunId.int32 == runId.int32
+  interp.logger.closeEvt(runId, phaseFirst, successful,
+                         feCompile.UntypedEvtTag, 0)
+  # TODO: should handle the "commit" here... ugh, need to tie into errors, man
+  #       I hope that doesn't include too much legacy reports stupidity.
+
+proc legacyProcessSystemModule*(interp: var FirstInterpreter, moduleId: ModuleId) =
+  ## legacy integration - because the system module owns core sym/type
+  ## definitions we need special handling
+  # todo: write whatever extra code to handle this terrible approach to the
+  #       system module
+  interp.logger.startEvt(interp.runState.baseRunId, phaseFirst,
+                         feModule.UntypedEvtTag, moduleId.uint64)

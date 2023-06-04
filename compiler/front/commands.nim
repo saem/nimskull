@@ -190,6 +190,7 @@ type
     cliFlagHelpFull
     cliFlagHelpAdvanced
     cliFlagMsgFormat
+    cliFlagCompilepreter
 
 type
   CliEventKind* = enum
@@ -202,6 +203,8 @@ type
       ## flag expected arg from an allow/valid list, but got none
     cliEvtErrFlagArgNotFromValidList # commands.nim
       ## flag expects arg from an allow/valid list
+    cliEvtErrFlagArgExpectedOnOrOff  # commands.nim
+      ## flag expects on/none or off as an arg
     cliEvtErrRunCmdFailed  # commands.nim and nim.nim
     cliEvtErrGenDependFailed # main.nim
     # errors - general flag/option/switches (TODO: standardize on "flag")
@@ -231,7 +234,8 @@ type
         unexpectedArgs*: string
       of cliEvtErrFlagArgForbidden,
           cliEvtErrFlagArgExpectedFromList,
-          cliEvtErrFlagArgNotFromValidList:
+          cliEvtErrFlagArgNotFromValidList,
+          cliEvtErrFlagArgExpectedOnOrOff:
         flag*: CliFlagKind  # TODO: create a restricted range this type
         givenFlg*: string
         givenArg*: string
@@ -320,6 +324,9 @@ proc logError*(conf: ConfigRef, evt: CliEvent) =
     of cliEvtErrFlagArgNotFromValidList:
       "expected value for switch '$1'. Expected one of $2, but got nothing" %
         [evt.givenFlg, allowedCliOptionsArgs(evt.flag).join(", ")]
+    of cliEvtErrFlagArgExpectedOnOrOff:
+      "'on' or 'off' expected for $1, but '$2' found" %
+        [evt.givenFlg, evt.givenArg]
     of cliEvtErrFlagProcessing:
       procResultToHumanStr(evt.procResult)
     of cliEvtWarnings, cliEvtHints:
@@ -490,6 +497,16 @@ proc processCmdLine*(pass: TCmdLinePass, cmd: openArray[string]; config: ConfigR
                     flag: cliFlagMsgFormat, givenFlg: p.key,
                     givenArg: p.val, pass: pass,
                     srcCodeOrigin: instLoc())
+      of "compilepreter":
+        case p.val.normalize
+        of "", "on": config.newCompilepreter = true
+        of "off":    config.newCompilepreter = false
+        else:
+          config.cliEventLogger:
+            CliEvent(kind: cliEvtErrFlagArgExpectedOnOrOff,
+                     flag: cliFlagCompilepreter, givenFlg: p.key,
+                     givenArg: p.val, pass: pass,
+                     srcCodeOrigin: instLoc())
       else:
         if p.key == "": # `-` was passed to indicate main project is stdin
           p.key = "-"

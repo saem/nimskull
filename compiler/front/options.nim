@@ -305,6 +305,8 @@ type
     setMsgFormat*: proc(config: ConfigRef, fmt: MsgFormatKind) {.closure.}
       ## callback that sets the message format for legacy reporting, needs to
       ## set before CLI handling, because reports are just that awful
+    newCompilepreter*: bool
+      ## whether to enable the new "compilepreter" module
     hack*: HackController ## Configuration values for debug printing
     when defined(nimDebugUtils):
       debugUtilsStack*: seq[string] ## which proc name to stop trace output
