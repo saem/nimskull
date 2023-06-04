@@ -849,12 +849,8 @@ proc semStmtAndGenerateGenerics(c: PContext, n: PNode): PNode =
   if c.isfirstTopLevelStmt and not isImportSystemStmt(c.graph, n):
     if sfSystemModule notin c.module.flags and not isEmptyTree(n):
       assert c.graph.systemModule != nil
-      if c.config.newCompilepreter:
-        c.graph.compilepreter.legacyImportModule(ModuleId c.module.position)
       c.moduleScope.addSym c.graph.systemModule # import the system module
       importAllSymbols(c, c.graph.systemModule)
-      if c.config.newCompilepreter:
-        c.graph.compilepreter.legacyFinishImportModule(ModuleId c.module.position)
       inc c.topStmts
     else:
       # do not increment `c.topStmts`, as we want to ignore empty/trivial nodes
@@ -943,6 +939,8 @@ proc myProcess(context: PPassContext, n: PNode): PNode {.nosinks.} =
   ## This will be called with top level nodes
   ## from a module as it's parsed and uses the context to accumulate data.
   var c = PContext(context)
+  if c.config.newCompilepreter:
+    c.graph.compilepreter.legacyProcessModuleStmt(ModuleId c.module.position, n)
   # no need for an expensive 'try' if we stop after the first error anyway:
   if c.config.errorMax <= 1:
     result = semStmtAndGenerateGenerics(c, n)
