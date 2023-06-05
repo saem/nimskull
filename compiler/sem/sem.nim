@@ -110,13 +110,6 @@ import compiler/tools/suggest
 when defined(nimfix):
   import compiler/nimfix/prettybase
 
-from compiler/compilepreter import legacyProcessModule,
-                                   legacyProcessSystemModule,
-                                   legacyImportModule,
-                                   legacyFinishImportModule,
-                                   legacyFinishModule,
-                                   ModuleId
-
 # implementation
 
 proc semExpr(c: PContext, n: PNode, flags: TExprFlags = {}): PNode
@@ -912,15 +905,6 @@ proc myOpen(graph: ModuleGraph; module: PSym;
     graph.systemModule = module
   c.topLevelScope = openScope(c)
   result = c
-  if graph.config.newCompilepreter:
-    if sfSystemModule in module.flags:
-      # system module
-      graph.compilepreter.legacyProcessSystemModule(ModuleId module.position)
-    else:
-      graph.compilepreter.legacyProcessModule(ModuleId module.position)
-      # xxx: using `m.position` like this is likely going to cause many issues
-      #      because the compiler ends up loading the same module multiple
-      #      times (varying ids)... not exactly sure why that happens
 
 # -- code-myprocess
 
@@ -939,8 +923,6 @@ proc myProcess(context: PPassContext, n: PNode): PNode {.nosinks.} =
   ## This will be called with top level nodes
   ## from a module as it's parsed and uses the context to accumulate data.
   var c = PContext(context)
-  if c.config.newCompilepreter:
-    c.graph.compilepreter.legacyProcessModuleStmt(ModuleId c.module.position, n)
   # no need for an expensive 'try' if we stop after the first error anyway:
   if c.config.errorMax <= 1:
     result = semStmtAndGenerateGenerics(c, n)
@@ -1007,8 +989,6 @@ proc myClose(graph: ModuleGraph; context: PPassContext, n: PNode): PNode =
   popOwner(c)
   popProcCon(c)
   sealRodFile(c)
-  if graph.config.newCompilepreter:
-    graph.compilepreter.legacyFinishModule(ModuleId c.module.position)
 
 const semPass* = makePass(myOpen, myProcess, myClose,
                           isFrontend = true)
