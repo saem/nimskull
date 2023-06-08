@@ -241,7 +241,7 @@ type
 when false:
   from compiler/ast/ast_types import PNode, TNodeKind, nodeKindsProducedByParse
 
-  proc legacyProcessModuleStmt*(interp: var FirstInterpreter, moduleId: ModuleId, s: PNode) =
+  proc toSyntaxDatum*(s: PNode): SyntaxDatum =
     ## legacy integration - mostly so we can auto-import the system module in
     ## `sem.semStmtAndGenerateGenerics`
     # xxx: should this be an "feAutoImport" instead so we can differentiate it,

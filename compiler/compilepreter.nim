@@ -36,12 +36,10 @@
 
 import compiler/compilepreter/interpreterlogger
 from compiler/front/options import ConfigRef
+from compiler/ast/idents import IdentCache
+from compiler/ast/lineinfos import FileIndex
 
 export RunId # xxx: ugh, export, find a way to remove it
-
-type
-  InstructionSource* = object
-  OutstructionTarget* = object
 
 # import modulegraphs, because it seems `FirstInterpreter` layers over it...
 # still figuring out how this should work.
@@ -54,8 +52,7 @@ type
   ## started defining, and to avoid getting stuck on names from the outset.
 
   ModuleId* = distinct int32
-
-  CommentId* = int32 # TODO: make distinct
+  PkgId* = distinct int32
 
   FirstEvtKind* {.pure.} = enum
     ## these are the "oustructions", each of these are paired with statuses to
@@ -237,18 +234,6 @@ type
     # xxx: `feDiagnostic` isn't fully thought through, need to consider error
     #      recovery
 
-  FirstOutstruction* = object
-    status*: OutstrStatus
-    case evt*: FirstEvtKind:
-      of feCompile:
-        newRunId*: RunId
-      of feModule, feImport:
-        moduleId*: ModuleId
-      of feComment:
-        commentId*: CommentId
-      else:
-        discard # TODO: write the rest of these branches!
-
   FirstInterpreterRunState = object
     ## state pertaining specifically to the run as opposed to more runtime
     ## module-esque dependencies.
@@ -265,6 +250,7 @@ type
     ## ignorace.
     # xxx: wrt naming: this might be the module or semantic module interpreter?
     legacyConfig: ConfigRef
+    identCache: IdentCache
     logger: InterpreterLogger
     runState: FirstInterpreterRunState
 
@@ -272,9 +258,10 @@ const
   runNotInitialized = RunId -2
   neverRanBefore = RunId -1
 
-func initInterpreter*(config: ConfigRef): FirstInterpreter =
+func initInterpreter*(config: ConfigRef, cache: IdentCache): FirstInterpreter =
   FirstInterpreter(
     legacyConfig: config,
+    identCache: cache,
     logger: InterpreterLogger(),
     runState: FirstInterpreterRunState(baseRunId: runNotInitialized)
   )
@@ -304,3 +291,11 @@ proc legacyFinishCompile*(interp: var FirstInterpreter, runId: RunId) =
   # TODO: should handle the "commit" here... ugh, need to tie into errors, man
   #       I hope that doesn't include too much legacy reports stupidity.
 
+proc legacyDiscoverPackage*(interp: var FirstInterpreter, pkgIdent: PIdent,
+                            pkgId: PkgId) =
+  
+
+proc legacyStartModule*(iterp: var FirstInterpreter, id: ModuleId,
+                        ident: PIdent, fileIdx: FileIndex, pkgIdent: PIdent,
+                        pkgId: PkgId) =
+  interp.logger.startEvt(interp.runState.baseRunId, phaseFirst, fe)

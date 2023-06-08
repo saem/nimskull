@@ -501,7 +501,7 @@ proc newModuleGraph*(cache: IdentCache; config: ConfigRef): ModuleGraph =
   result.operators = initOperators(result)
   result.emittedTypeInfo = initTable[string, FileIndex]()
   if config.newCompilepreter:
-    result.compilepreter = compilepreter.initInterpreter(config)
+    result.compilepreter = compilepreter.initInterpreter(config, cache)
 
 proc resetAllModules*(g: ModuleGraph) =
   initStrTable(g.packageSyms)

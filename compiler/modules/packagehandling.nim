@@ -58,3 +58,36 @@ proc withPackageName*(conf: ConfigRef; path: AbsoluteFile): AbsoluteFile =
     result = p / RelativeFile((x & '_' & file) & ext)
   else:
     result = p / RelativeFile(fakePackageName(conf, path))
+
+#[
+
+# What's is This
+
+This descibes the near-term approach/requirements for packages in Nimskull.
+
+This isn't the long term future direction, just a minimal system that can work
+for Nimskull's compiler repository and boostrapping needs. Nothing else is
+required.
+
+Non-goals:
+- nimble support
+- nim compatability
+- decoupling the standard library or any other half-baked ideas
+
+# Constraints
+
+`std/` prefix handling is hardcoded in the compiler, see the `options` module,
+in particular the `findModule` proc, which detects `stdPrefix`, and then
+searches within known paths defined within the hardcoded `stdlibDirs`. Changing
+this isn't possible in one go as that would break boostrapping as the csources
+compiler has this behaviour. Cutting a new csources for this reason alone seems
+overkill and can easily introduce more issues.
+
+Therefore the migration will likely require all `import std/...` to change to
+`import stdlib/...`.
+
+# Packages
+
+- create package symbols
+
+]#
