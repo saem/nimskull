@@ -36,7 +36,7 @@
 
 import compiler/compilepreter/interpreterlogger
 from compiler/front/options import ConfigRef
-from compiler/ast/idents import IdentCache
+from compiler/ast/idents import IdentCache, PIdent
 from compiler/ast/lineinfos import FileIndex
 
 export RunId # xxx: ugh, export, find a way to remove it
@@ -291,11 +291,17 @@ proc legacyFinishCompile*(interp: var FirstInterpreter, runId: RunId) =
   # TODO: should handle the "commit" here... ugh, need to tie into errors, man
   #       I hope that doesn't include too much legacy reports stupidity.
 
-proc legacyDiscoverPackage*(interp: var FirstInterpreter, pkgIdent: PIdent,
-                            pkgId: PkgId) =
-  
+proc legacyDiscoverPkg*(interp: var FirstInterpreter, ident: PIdent): PkgId =
+  ## 
+  let maybeId = interp.runState.pkgs.find(ident)
+  if maybeId == -1:
+    result = PkgId interp.runState.pkgs.len.int32
+    interp.runState.pkgs.add(ident)
+  else:
+    result = PkgId maybeId.int32
 
-proc legacyStartModule*(iterp: var FirstInterpreter, id: ModuleId,
-                        ident: PIdent, fileIdx: FileIndex, pkgIdent: PIdent,
-                        pkgId: PkgId) =
-  interp.logger.startEvt(interp.runState.baseRunId, phaseFirst, fe)
+proc legacyStartModule*(interp: var FirstInterpreter, ident: PIdent,
+                        fileIdx: FileIndex, pkgId: PkgId) =
+  let data = (uint64(pkgId.int32) shl 32) or uint64(fileIdx.int32)
+  interp.logger.startEvt(interp.runState.baseRunId, phaseFirst,
+                         feModule.UntypedEvtTag, data)

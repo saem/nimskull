@@ -26,20 +26,13 @@ proc startModule(graph: ModuleGraph; module: PSym; idgen: IdGenerator): PPassCon
   result.legacyGraph = graph
   result.legacyModule = module
 
-  var
-    pkgPath = newSeq[PIdent]
-    currPkg = module.owner
-  while currPkg != nil:
-    pkgPath.add currPkg.ident
-    currPkg = currPkg.owner
-  reverse(pkgPath)
-  
-  let pkgId = graph.compilepreter.legacyDiscoverPackage(module.owner.ident,
-                                                        PkgId module.owner.id)
+  # xxx: this isn't the "right" way to do package id, as the package id will be
+  #      the same as the module that first led to its discovery (unstable)
   graph.compilepreter.legacyStartModule(ModuleId module.position, module.ident,
-                                        module.info.fileIndex, pkgId)
+                                        module.info.fileIndex,
+                                        module.owner.ident)
 
-  when false: # old code to rrefer to
+  when false: # old code to refer to
     interp.logger.startEvt(interp.runState.baseRunId, phaseFirst,
                           feModule.UntypedEvtTag, moduleId.uint64)
 
