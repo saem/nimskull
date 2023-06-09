@@ -101,7 +101,6 @@ type
 
     startupPackedConfig*: PackedConfig
     packageSyms*: TStrTable
-    modulesPerPackage*: Table[ItemId, TStrTable]
     deps*: IntSet # the dependency graph or potentially its transitive closure.
     suggestMode*: bool # whether we are in nimsuggest mode or not.
     invalidTransitiveClosure: bool
