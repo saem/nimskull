@@ -211,12 +211,13 @@ type
       of synRoutineDefKinds:routineExtraId: ExtraIdx
       of synNKidsKinds:
                             extraId: ExtraIdx
-                            count: Natural
+                            count: uint32
 
   SyntaxDatum* = object
     ## an abstract syntax tree as a singular unit of data (datum).
     tree: seq[SyntaxDatumNode]
-    extra: seq[TreeIdx]
+    extra: seq[TreeIdx]        ## index into `tree`, do not encode other data
+                               ## in here without changing procs like `append`
     # ident: seq[string]       # xxx: reusing ident cache/PIdent for now
     strs: seq[string]
 
@@ -241,145 +242,182 @@ type
 when false:
   from compiler/ast/ast_types import PNode, TNodeKind, nodeKindsProducedByParse
 
-  proc toSyntaxDatum*(s: PNode): SyntaxDatum =
-    ## legacy integration - mostly so we can auto-import the system module in
-    ## `sem.semStmtAndGenerateGenerics`
-    # xxx: should this be an "feAutoImport" instead so we can differentiate it,
-    #      do we save some data to track it, or do we ignore it all together?
-    var
-      nodeStack: seq[PNode]
-      syn: SyntaxDatum
-      n = s
-    while n != nil:
-      case n.kind
-      of nkEmpty: syn.tree.add(SyntaxDatumNode(kind: synEmpty))
-      of nkIdent:
-        syn.tree.add(SyntaxDatumNode(kind: synIdent, ident: n.ident))
-      of nkCharLit: syn.tree.add(SyntaxDatumNode(kind: synCharLit, charLit: n.intVal.char))
-      of nkIntLit: syn.tree.add(SyntaxDatumNode(kind: synIntLit, intLit: n.intVal.BiggestInt))
-      of nkInt8Lit: syn.tree.add(SyntaxDatumNode(kind: synInt8Lit, int8Lit: n.intVal.int8))
-      of nkInt16Lit: syn.tree.add(SyntaxDatumNode(kind: synInt16Lit, int16Lit: n.intVal.int16))
-      of nkInt32Lit: syn.tree.add(SyntaxDatumNode(kind: synInt32Lit, int32Lit: n.intVal.int32))
-      of nkInt64Lit: syn.tree.add(SyntaxDatumNode(kind: synInt64Lit, int64Lit: n.intVal.int64))
-      of nkUIntLit: syn.tree.add(SyntaxDatumNode(kind: synUIntLit, uintLit: n.intVal.BiggestUInt))
-      of nkUInt8Lit: syn.tree.add(SyntaxDatumNode(kind: synUInt8Lit, uint8Lit: n.intVal.uint8))
-      of nkUInt16Lit: syn.tree.add(SyntaxDatumNode(kind: synUInt16Lit, uint16Lit: n.intVal.uint16))
-      of nkUInt32Lit: syn.tree.add(SyntaxDatumNode(kind: synUInt32Lit, uint32Lit: n.intVal.uint32))
-      of nkUInt64Lit: syn.tree.add(SyntaxDatumNode(kind: synUInt64Lit, uint64Lit: n.intVal.uint64))
-      of nkFloatLit: syn.tree.add(SyntaxDatumNode(kind: synFloatLit, floatLit: n.floatVal.BiggestFloat))
-      of nkFloat32Lit: syn.tree.add(SyntaxDatumNode(kind: synFloat32Lit, float32Lit: n.floatVal.float32))
-      of nkFloat64Lit: syn.tree.add(SyntaxDatumNode(kind: synFloat64Lit, float64Lit: n.floatVal.float64))
-      of nkFloat128Lit: syn.tree.add(SyntaxDatumNode(kind: synFloat128Lit, float128Lit: n.floatVal.BiggestFloat))
-      of nkStrLit: syn.tree.add(SyntaxDatumNode(kind: synStrLit,
-                                                strLit: (let idx = syn.strs.len; syn.strs.add n.strVal; StrIdx idx)))
-      of nkRStrLit: syn.tree.add(SyntaxDatumNode(kind: synRStrLit,
-                                                strLit: (let idx = syn.strs.len; syn.strs.add n.strVal; StrIdx idx)))
-      of nkTripleStrLit: syn.tree.add(SyntaxDatumNode(kind: synTripleStrLit,
-                                                strLit: (let idx = syn.strs.len; syn.strs.add n.strVal; StrIdx idx)))
-      of nkNilLit: syn.tree.add(SyntaxDatumNode(kind: synNilLit))
-      of nkCustomLit: synCustomLit
-      of nkAccQuoted: synAccQuoted
-      of nkCall: synCall
-      of nkCommand: synCommand
-      of nkCallStrLit: synCallStrLit
-      of nkInfix: synInfix
-      of nkPrefix: synPrefix
-      of nkPostfix: synPostfix
-      of nkExprEqExpr: synExprEqExpr
-      of nkExprColonExpr: synExprColonExpr
-      of nkIdentDefs: synIdentDefs
-      of nkConstDef: synConstDef
-      of nkVarTuple: synVarTuple
-      of nkPar: synPar
-      of nkSqrBracket: synSqrBracket
-      of nkCurly: synCurly
-      of nkTupleConstr: synTupleConstr
-      of nkObjConstr: synObjConstr
-      of nkTableConstr: synTableConstr
-      of nkSqrBracketExpr: synSqrBracketExpr
-      of nkCurlyExpr: synCurlyExpr
-      of nkPragmaExpr: synPragmaExpr
-      of nkPragma: synPragma
-      of nkPragmaBlock: synPragmaBlock
-      of nkDotExpr: synDotExpr
-      of nkIfExpr: synIfExpr
-      of nkIfStmt: synIfStmt
-      of nkElifBranch: synElifBranch
-      of nkElifExpr: synElifExpr
-      of nkElse: synElse
-      of nkElseExpr: synElseExpr
-      of nkCaseStmt: synCaseStmt
-      of nkOfBranch: synOfBranch
-      of nkWhenExpr: synWhenExpr
-      of nkWhenStmt: synWhenStmt
-      of nkForStmt: synForStmt
-      of nkWhileStmt: synWhileStmt
-      of nkBlockExpr: synBlockExpr
-      of nkBlockStmt: synBlockStmt
-      of nkDiscardStmt: synDiscardStmt
-      of nkContinueStmt: synContinueStmt
-      of nkBreakStmt: synBreakStmt
-      of nkReturnStmt: synReturnStmt
-      of nkRaiseStmt: synRaiseStmt
-      of nkYieldStmt: synYieldStmt
-      of nkTryStmt: synTryStmt
-      of nkExceptBranch: synExceptBranch
-      of nkFinally: synFinally
-      of nkDefer: synDefer
-      of nkLambda: synLambda
-      of nkDo: synDo
-      of nkBind: synBind
-      of nkBindStmt: synBindStmt
-      of nkMixinStmt: synMixinStmt
-      of nkCast: synCast
-      of nkStaticStmt: synStaticStmt
-      of nkAsgn: synAsgn
-      of nkGenericParams: synGenericParams
-      of nkFormalParams: synFormalParams
-      of nkStmtList: synStmtList
-      of nkStmtListExpr: synStmtListExpr
-      of nkImportStmt: synImportStmt
-      of nkImportExceptStmt: synImportExceptStmt
-      of nkFromStmt: synFromStmt
-      of nkIncludeStmt: synIncludeStmt
-      of nkExportStmt: synExportStmt
-      of nkExportExceptStmt: synExportExceptStmt
-      of nkConstSection: synConstSection
-      of nkLetSection: synLetSection
-      of nkVarSection: synVarSection
-      of nkProcDef: synProcDef
-      of nkFuncDef: synFuncDef
-      of nkMethodDef: synMethodDef
-      of nkConverterDef: synConverterDef
-      of nkIteratorDef: synIteratorDef
-      of nkMacroDef: synMacroDef
-      of nkTemplateDef: synTemplateDef
-      of nkTypeSection: synTypeSection
-      of nkTypeDef: synTypeDef
-      of nkEnumTy: synEnumTy
-      of nkEnumFieldDef: synEnumFieldDef
-      of nkObjectTy: synObjectTy
-      of nkTupleTy: synTupleTy
-      of nkProcTy: synProcTy
-      of nkIteratorTy: synIteratorTy
-      of nkRecList: synRecList
-      of nkRecCase: synRecCase
-      of nkRecWhen: synRecWhen
-      of nkTypeOfExpr: synTypeOfExpr
-      of nkRefTy: synRefTy
-      of nkVarTy: synVarTy
-      of nkPtrTy: synPtrTy
-      of nkStaticTy: synStaticTy
-      of nkDistinctTy: synDistinctTy
-      of nkMutableTy: synMutableTy
-      of nkTupleClassTy: synTupleClassTy
-      of nkTypeClassTy: synTypeClassTy
-      of nkOfInherit: synOfInherit
-      of nkArgList: synArgList
-      of nkWith: synWith
-      of nkWithout: synWithout
-      of nkAsmStmt: synAsmStmt
-      of nkCommentStmt: synCommentStmt
-      of nkUsingStmt: synUsingStmt
-      of {low(TNodeKind) .. high(TNodeKind)} - nodeKindsProducedByParse:
-        discard
+  proc append(rcvr: var SyntaxDatum, toAdd: SyntaxDatum) =
+    ## appends the data in `toAdd` onto `rcvr`
+    let
+      treeOffset: int32 = rcvr.tree.len
+      extraOffset: int32 = rcvr.extra.len
+      strsOffset: int32 = rcvr.strs.len
+    # batch load extras and strings
+    for e in toAdd.extra.items: t.extra.add ExtraIdx(e.int32 + extraOffset)
+    for s in toAdd.strs.items:  t.strs.add s
+    # now add tree nodes and tweak their indicies where required
+    for t in toAdd.tree.items:
+      t.tree.add t
+      # fix the indexes to point to the right spots
+      case t.kind
+      of synEmpty..synFloat128Lit, synUnaryKinds, synUptoUnaryKinds,
+          synLeafKinds, synUnaryKinds: discard
+      of synStrLitKinds:
+        t.tree[^1].strLit = StrIdx(t.tree[^1].strLit.int32 + strsOffset)
+      of synCustomLit:
+        t.tree[^1].litPart = StrIdx(t.tree[^1].litPart.int32 + strsOffset)
+      of synBinaryKinds:
+        t.tree[^1].rightId = TreeIdx(t.tree[^1].rightId.int32 + treeOffset)
+      of synRoutineDefKinds:
+        t.tree[^1].routineExtraId = TreeIdx(t.tree[^1].routineExtraId.int32 + extraOffset)
+      of synNKidsKinds
+        t.tree[^1].extraId = TreeIdx(t.tree[^1].extraId.int32 + extraOffset)
+
+  proc toSyntaxDatum*(n: PNode): SyntaxDatum =
+    # TODO: figure out what to do about line info
+    var syn: SyntaxDatum
+    case n.kind
+    of nkEmpty: syn.tree.add(SyntaxDatumNode(kind: synEmpty))
+    of nkIdent:
+      syn.tree.add(SyntaxDatumNode(kind: synIdent, ident: n.ident))
+    of nkCharLit: syn.tree.add(SyntaxDatumNode(kind: synCharLit, charLit: n.intVal.char))
+    of nkIntLit: syn.tree.add(SyntaxDatumNode(kind: synIntLit, intLit: n.intVal.BiggestInt))
+    of nkInt8Lit: syn.tree.add(SyntaxDatumNode(kind: synInt8Lit, int8Lit: n.intVal.int8))
+    of nkInt16Lit: syn.tree.add(SyntaxDatumNode(kind: synInt16Lit, int16Lit: n.intVal.int16))
+    of nkInt32Lit: syn.tree.add(SyntaxDatumNode(kind: synInt32Lit, int32Lit: n.intVal.int32))
+    of nkInt64Lit: syn.tree.add(SyntaxDatumNode(kind: synInt64Lit, int64Lit: n.intVal.int64))
+    of nkUIntLit: syn.tree.add(SyntaxDatumNode(kind: synUIntLit, uintLit: n.intVal.BiggestUInt))
+    of nkUInt8Lit: syn.tree.add(SyntaxDatumNode(kind: synUInt8Lit, uint8Lit: n.intVal.uint8))
+    of nkUInt16Lit: syn.tree.add(SyntaxDatumNode(kind: synUInt16Lit, uint16Lit: n.intVal.uint16))
+    of nkUInt32Lit: syn.tree.add(SyntaxDatumNode(kind: synUInt32Lit, uint32Lit: n.intVal.uint32))
+    of nkUInt64Lit: syn.tree.add(SyntaxDatumNode(kind: synUInt64Lit, uint64Lit: n.intVal.uint64))
+    of nkFloatLit: syn.tree.add(SyntaxDatumNode(kind: synFloatLit, floatLit: n.floatVal.BiggestFloat))
+    of nkFloat32Lit: syn.tree.add(SyntaxDatumNode(kind: synFloat32Lit, float32Lit: n.floatVal.float32))
+    of nkFloat64Lit: syn.tree.add(SyntaxDatumNode(kind: synFloat64Lit, float64Lit: n.floatVal.float64))
+    of nkFloat128Lit: syn.tree.add(SyntaxDatumNode(kind: synFloat128Lit, float128Lit: n.floatVal.BiggestFloat))
+    of nkStrLit: syn.tree.add(SyntaxDatumNode(kind: synStrLit,
+                                              strLit: (let idx = syn.strs.len; syn.strs.add n.strVal; StrIdx idx)))
+    of nkRStrLit: syn.tree.add(SyntaxDatumNode(kind: synRStrLit,
+                                              strLit: (let idx = syn.strs.len; syn.strs.add n.strVal; StrIdx idx)))
+    of nkTripleStrLit: syn.tree.add(SyntaxDatumNode(kind: synTripleStrLit,
+                                              strLit: (let idx = syn.strs.len; syn.strs.add n.strVal; StrIdx idx)))
+    of nkNilLit: syn.tree.add(SyntaxDatumNode(kind: synNilLit))
+    of nkCustomLit: syn.tree.add(SyntaxDatumNode(kind: synCustomLit,
+                                              litPart: (let idx = syn.strs.len; syn.strs.add n[0].strVal; StrIdx idx),
+                                              suffix: n[1].ident))
+    of nkAccQuoted:
+      let
+        extraIdx = ExtraIdx syn.extra.len
+        count = n.len.uint32
+      syn.tree.add(SyntaxDatumNode(kind: synAccQuoted, extraId: extraIdx, count: count))
+      for identNode in n.items:
+        let treeIdx = TreeIdx syn.tree.len
+        syn.tree.add(SyntaxDatumNode(kind: synIdent, ident: identNode.ident))
+        syn.extra.add treeIdx
+    of nkCall:
+      let
+        extraIdx = ExtraIdx syn.extra.len
+        count = n.len.uint32
+      syn.tree.add(SyntaxDatumNode(kind: synCall, extraId: extraIdx, count: count))
+      for n in n.items:
+        let treeIdx = TreeIdx syn.tree.len
+        syn.tree.add(kind: synCall)
+    of nkCommand: synCommand
+    of nkCallStrLit: synCallStrLit
+    of nkInfix: synInfix
+    of nkPrefix: synPrefix
+    of nkPostfix: synPostfix
+    of nkExprEqExpr: synExprEqExpr
+    of nkExprColonExpr: synExprColonExpr
+    of nkIdentDefs: synIdentDefs
+    of nkConstDef: synConstDef
+    of nkVarTuple: synVarTuple
+    of nkPar: synPar
+    of nkSqrBracket: synSqrBracket
+    of nkCurly: synCurly
+    of nkTupleConstr: synTupleConstr
+    of nkObjConstr: synObjConstr
+    of nkTableConstr: synTableConstr
+    of nkSqrBracketExpr: synSqrBracketExpr
+    of nkCurlyExpr: synCurlyExpr
+    of nkPragmaExpr: synPragmaExpr
+    of nkPragma: synPragma
+    of nkPragmaBlock: synPragmaBlock
+    of nkDotExpr: synDotExpr
+    of nkIfExpr: synIfExpr
+    of nkIfStmt: synIfStmt
+    of nkElifBranch: synElifBranch
+    of nkElifExpr: synElifExpr
+    of nkElse: synElse
+    of nkElseExpr: synElseExpr
+    of nkCaseStmt: synCaseStmt
+    of nkOfBranch: synOfBranch
+    of nkWhenExpr: synWhenExpr
+    of nkWhenStmt: synWhenStmt
+    of nkForStmt: synForStmt
+    of nkWhileStmt: synWhileStmt
+    of nkBlockExpr: synBlockExpr
+    of nkBlockStmt: synBlockStmt
+    of nkDiscardStmt: synDiscardStmt
+    of nkContinueStmt: synContinueStmt
+    of nkBreakStmt: synBreakStmt
+    of nkReturnStmt: synReturnStmt
+    of nkRaiseStmt: synRaiseStmt
+    of nkYieldStmt: synYieldStmt
+    of nkTryStmt: synTryStmt
+    of nkExceptBranch: synExceptBranch
+    of nkFinally: synFinally
+    of nkDefer: synDefer
+    of nkLambda: synLambda
+    of nkDo: synDo
+    of nkBind: synBind
+    of nkBindStmt: synBindStmt
+    of nkMixinStmt: synMixinStmt
+    of nkCast: synCast
+    of nkStaticStmt: synStaticStmt
+    of nkAsgn: synAsgn
+    of nkGenericParams: synGenericParams
+    of nkFormalParams: synFormalParams
+    of nkStmtList: synStmtList
+    of nkStmtListExpr: synStmtListExpr
+    of nkImportStmt: synImportStmt
+    of nkImportExceptStmt: synImportExceptStmt
+    of nkFromStmt: synFromStmt
+    of nkIncludeStmt: synIncludeStmt
+    of nkExportStmt: synExportStmt
+    of nkExportExceptStmt: synExportExceptStmt
+    of nkConstSection: synConstSection
+    of nkLetSection: synLetSection
+    of nkVarSection: synVarSection
+    of nkProcDef: synProcDef
+    of nkFuncDef: synFuncDef
+    of nkMethodDef: synMethodDef
+    of nkConverterDef: synConverterDef
+    of nkIteratorDef: synIteratorDef
+    of nkMacroDef: synMacroDef
+    of nkTemplateDef: synTemplateDef
+    of nkTypeSection: synTypeSection
+    of nkTypeDef: synTypeDef
+    of nkEnumTy: synEnumTy
+    of nkEnumFieldDef: synEnumFieldDef
+    of nkObjectTy: synObjectTy
+    of nkTupleTy: synTupleTy
+    of nkProcTy: synProcTy
+    of nkIteratorTy: synIteratorTy
+    of nkRecList: synRecList
+    of nkRecCase: synRecCase
+    of nkRecWhen: synRecWhen
+    of nkTypeOfExpr: synTypeOfExpr
+    of nkRefTy: synRefTy
+    of nkVarTy: synVarTy
+    of nkPtrTy: synPtrTy
+    of nkStaticTy: synStaticTy
+    of nkDistinctTy: synDistinctTy
+    of nkMutableTy: synMutableTy
+    of nkTupleClassTy: synTupleClassTy
+    of nkTypeClassTy: synTypeClassTy
+    of nkOfInherit: synOfInherit
+    of nkArgList: synArgList
+    of nkWith: synWith
+    of nkWithout: synWithout
+    of nkAsmStmt: synAsmStmt
+    of nkCommentStmt: synCommentStmt
+    of nkUsingStmt: synUsingStmt
+    of {low(TNodeKind) .. high(TNodeKind)} - nodeKindsProducedByParse:
+      discard

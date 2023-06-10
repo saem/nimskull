@@ -38,6 +38,7 @@ import compiler/compilepreter/interpreterlogger
 from compiler/front/options import ConfigRef
 from compiler/ast/idents import IdentCache, PIdent
 from compiler/ast/lineinfos import FileIndex
+from compiler/ast/ast_types import PNode
 
 export RunId # xxx: ugh, export, find a way to remove it
 
@@ -243,6 +244,9 @@ type
                       ## * if this is equal, then it's the same run
                       ## * if less than, then we're a child run or unrelated
     runSerial: int32  ## how we generate runIds
+    pkgs: seq[PIdent] ## this field and pkg implementation will change, it's
+                      ## not implemented to allow for unwinding commits; for
+                      ## now it stores package idents in discovery order
 
   FirstInterpreter* = object
     ## opaque type representing the interpreter, used to close over necessary
@@ -292,7 +296,8 @@ proc legacyFinishCompile*(interp: var FirstInterpreter, runId: RunId) =
   #       I hope that doesn't include too much legacy reports stupidity.
 
 proc legacyDiscoverPkg*(interp: var FirstInterpreter, ident: PIdent): PkgId =
-  ## 
+  # xxx: package discovery doesn't use a transactional approach, need that
+  #      before we can have a package language. 
   let maybeId = interp.runState.pkgs.find(ident)
   if maybeId == -1:
     result = PkgId interp.runState.pkgs.len.int32
@@ -305,3 +310,12 @@ proc legacyStartModule*(interp: var FirstInterpreter, ident: PIdent,
   let data = (uint64(pkgId.int32) shl 32) or uint64(fileIdx.int32)
   interp.logger.startEvt(interp.runState.baseRunId, phaseFirst,
                          feModule.UntypedEvtTag, data)
+
+proc legacyModuleStmt*(interp: var FirstInterpreter, moduleId: ModuleId,
+                       n: PNode) =
+  # TODO: convert legacy tree and feed it as instructions to the interpreter
+  discard
+
+proc legacyFinishModule*(interp: var FirstInterpreter, moduleId: ModuleId) =
+  # TODO: wrap up interpreter instructions
+  discard
