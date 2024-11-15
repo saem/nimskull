@@ -1753,8 +1753,14 @@ proc expr(p: BProc, n: CgNode, d: var TLoc) =
   of cnkLoopJoinStmt:
     startBlock(p, "while (1) {$n")
   of cnkFinally:
-    startBlock(p)
-  of cnkEnd, cnkContinueStmt, cnkLoopStmt:
+    startBlock(p, "$1: {$n", [$n[0].label])
+    linefmt(p, cpsStmts, "*nimErr_ = NIM_FALSE;$n", [])
+  of cnkContinueStmt:
+    p.flags.incl nimErrorFlagAccessed
+    linefmt(p, cpsStmts, "*nimErr_ = NIM_TRUE;$n", [])
+    linefmt(p, cpsStmts, "$1$n", [raiseInstr(p, n[0])])
+    endBlock(p)
+  of cnkEnd, cnkLoopStmt:
     endBlock(p)
   of cnkDef: genSingleVar(p, n[0], n[1])
   of cnkCaseStmt: genCase(p, n)
@@ -1770,11 +1776,12 @@ proc expr(p: BProc, n: CgNode, d: var TLoc) =
   of cnkExcept:
     genExcept(p, n)
   of cnkRaiseStmt: genRaiseStmt(p, n)
-  of cnkJoinStmt, cnkGotoStmt:
-    unreachable("handled separately")
+  of cnkJoinStmt:
+    linefmt(p, cpsStmts, "$1:;$n", [n[0].label])
+  of cnkGotoStmt:
+    linefmt(p, cpsStmts, "goto $1;$n", [n[0].label])
   of cnkInvalid, cnkType, cnkAstLit, cnkMagic, cnkRange, cnkBinding, cnkBranch,
-     cnkLabel, cnkTargetList, cnkField, cnkStmtList,
-     cnkLeave, cnkResume:
+     cnkLabel, cnkField, cnkStmtList, cnkResume:
     internalError(p.config, n.info, "expr(" & $n.kind & "); unknown node kind")
 
 proc getDefaultValue(p: BProc; typ: PType; info: TLineInfo): Rope =

@@ -90,9 +90,6 @@ type
 
     mnkResume    ## special action in a target list that means "resume
                  ## exception handling in caller"
-    mnkLeave     ## a leave action within a target list
-    mnkTargetList## describes the actions to perform prior to jumping, as well
-                 ## as the final jump
 
     mnkDef       ## marks the start of existence of a local, global, procedure,
                  ## or temporary. Supports an optional intial value (except for
@@ -175,9 +172,8 @@ type
     # future direction: the arithmetic operations should also apply to
     # unsigned integers
 
-    mnkRaise  ## if the operand is an ``mnkNone`` node, reraises the
-              ## currently active exception. Otherwise, consumes the operand
-              ## and sets it as the active exception
+    mnkRaise  ## starts exceptional control-flow and jumps to the specified
+              ## handler
 
     mnkSetConstr  ## constructor for set values
     mnkRange      ## range constructor. May only appear in set constructions
@@ -276,7 +272,7 @@ type
       strVal*: StringId
     of mnkAstLit:
       ast*: AstId
-    of mnkLabel, mnkLeave:
+    of mnkLabel:
       label*: LabelId
     of mnkImmediate:
       imm*: uint32 ## meaning depends on the context
@@ -284,7 +280,7 @@ type
       magic*: TMagic
     of mnkNone, mnkNilLit, mnkType, mnkResume:
       discard
-    of {low(MirNodeKind)..high(MirNodeKind)} - {mnkNone .. mnkLeave}:
+    of {low(MirNodeKind)..high(MirNodeKind)} - {mnkNone..mnkResume}:
       len*: uint32
 
   MirTree* = seq[MirNode]
@@ -309,7 +305,7 @@ const
     ## Node kinds that represent definition statements (i.e. something that
     ## introduces a named entity)
 
-  AtomNodes* = {mnkNone..mnkLeave}
+  AtomNodes* = {mnkNone..mnkResume}
     ## Nodes that don't support sub nodes.
 
   SubTreeNodes* = AllNodeKinds - AtomNodes
@@ -317,7 +313,7 @@ const
 
   SingleOperandNodes* = {mnkPathNamed, mnkPathPos, mnkPathVariant, mnkPathConv,
                          mnkAddr, mnkDeref, mnkView, mnkDerefView, mnkStdConv,
-                         mnkConv, mnkCast, mnkRaise, mnkArg,
+                         mnkConv, mnkCast, mnkArg,
                          mnkName, mnkConsume, mnkVoid, mnkCopy, mnkMove,
                          mnkSink, mnkDestroy, mnkMutView, mnkToMutSlice}
     ## Nodes that start sub-trees but that always have a single sub node.
@@ -329,7 +325,7 @@ const
     ## Assignment modifiers. Nodes that can only appear directly in the source
     ## slot of assignments.
 
-  LabelNodes* = {mnkLabel, mnkLeave}
+  LabelNodes* = {mnkLabel}
 
   LiteralDataNodes* = {mnkNilLit, mnkIntLit, mnkUIntLit, mnkFloatLit,
                        mnkStrLit, mnkAstLit}
@@ -421,7 +417,7 @@ template `[]`*(tree: MirTree, i: NodePosition | OpValue): untyped =
 
 template isAtom(kind: MirNodeKind): bool =
   # much faster than an `in SubTreeNodes` test
-  ord(kind) <= ord(mnkLeave)
+  ord(kind) <= ord(mnkResume)
 
 func parent*(tree: MirTree, n: NodePosition): NodePosition =
   result = n

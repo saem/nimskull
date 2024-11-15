@@ -457,9 +457,10 @@ proc raiseExceptionAux(e: sink(ref Exception)) {.nodestroy.} =
     pushActiveException(e)
   else:
     pushCurrentException(e)
-  inc nimInErrorMode
+    inc nimInErrorMode
 
-proc prepareException(e: ref Exception, ename: cstring) {.compilerRtl.} =
+proc raiseExceptionEx(e: sink(ref Exception), ename, procname, filename: cstring,
+                      line: int) {.compilerRtl, nodestroy.} =
   if e.name.isNil: e.name = ename
   when hasSomeStackTrace:
     when defined(nimStackTraceOverride):
@@ -476,22 +477,11 @@ proc prepareException(e: ref Exception, ename: cstring) {.compilerRtl.} =
         e.trace.add reraisedFrom(reraisedFromBegin)
         auxWriteStackTrace(framePtr, e.trace)
         e.trace.add reraisedFrom(reraisedFromEnd)
-
-proc raiseException2(e: sink(ref Exception), procname, filename: cstring,
-                     line: int) {.compilerRtl.} =
-  ## Part of the C backend's runtime. Pushes `e` to the stack, invokes the
-  ## local and global callback (if any), and enters error mode.
-  when not hasSomeStackTrace:
+  else:
     if procname != nil and filename != nil:
       e.trace.add StackTraceEntry(procname: procname, filename: filename,
                                   line: line)
   raiseExceptionAux(e)
-
-proc raiseExceptionEx(e: sink(ref Exception), ename, procname, filename: cstring,
-                      line: int) {.compilerRtl, nodestroy.} =
-  # XXX: legacy routine used by the csources' runtime.
-  prepareException(e, ename)
-  raiseException2(e, procname, filename, line)
 
 proc raiseException(e: sink(ref Exception), ename: cstring) {.compilerRtl.} =
   # XXX: legacy routine used by the csources' runtime.
@@ -502,7 +492,6 @@ proc reraiseException() {.compilerRtl.} =
     # the compiler makes sure that a re-raise only take place within an
     # exception handler
     pushActiveException(move handlers.exc)
-    inc nimInErrorMode
   else:
     if currException == nil:
       sysFatal(ReraiseDefect, "no exception to reraise")
@@ -614,14 +603,10 @@ proc nimLeaveExcept() {.compilerproc, inline.} =
   restoreCurrentEx()
   nimInErrorMode = wasInErrorMode
 
-proc nimAbortException() {.compilerproc.} =
+proc nimAbortException(viaRaise: bool) {.compilerproc.} =
   ## Abort (i.e., discard) an in-flight exception. Must only be called if an
   ## exception is actually in-flight.
-  var wasInErrorMode = nimInErrorMode
-  # disable error mode right away
-  nimInErrorMode = false
-
-  if wasInErrorMode:
+  if viaRaise:
     # if an exception is aborted by raising another exception, don't pop the
     # active exception; drop its parent
     if activeException.up != nil:
@@ -630,7 +615,6 @@ proc nimAbortException() {.compilerproc.} =
     activeException = activeException.up
 
   restoreCurrentEx()
-  nimInErrorMode = wasInErrorMode
 
 {.pop.}
 
